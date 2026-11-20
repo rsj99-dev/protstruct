@@ -1,0 +1,142 @@
+"""FASTA 读取、序列清洗与校验。"""
+
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from typing import List
+
+STANDARD_RESIDUES = "ACDEFGHIKLMNPQRSTVWY"
+MAX_SEQUENCES = 20
+
+# 显式支持的 FASTA 扩展名（大小写不敏感）
+SUPPORTED_EXTENSIONS = (".fa", ".faa", ".fasta")
+
+# 非标准残基的统一处理：U(硒代半胱氨酸)->C，O(吡咯赖氨酸)->K，
+# B/Z/J 为模糊残基，统一记为 X（预测时按中性倾向处理）。
+_ALIASES = {"U": "C", "O": "K", "B": "X", "Z": "X", "J": "X", "X": "X"}
+
+
+class FastaError(ValueError):
+    """FASTA 内容不合法时抛出。"""
+
+
+@dataclass
+class SequenceRecord:
+    """一条 FASTA 记录，sequence 已转为大写并去除空白/连接符。"""
+
+    identifier: str
+    description: str
+    sequence: str
+
+    @property
+    def length(self) -> int:
+        return len(self.sequence)
+
+
+def clean_sequence(raw: str, identifier: str) -> str:
+    """去空白、统一大小写并校验残基字符，返回纯序列字符串。"""
+    cleaned = []
+    invalid = set()
+    for char in raw.upper():
+        if char.isspace() or char in "-.":
+            continue
+        if char == "*":  # 终止符，直接丢弃
+            continue
+        if char in STANDARD_RESIDUES:
+            cleaned.append(char)
+        elif char in _ALIASES:
+            alias = _ALIASES[char]
+            if alias:
+                cleaned.append(alias)
+        else:
+            invalid.add(char)
+    if invalid:
+        raise FastaError(
+            "序列 %s 含非法残基字符: %s（支持 20 种标准氨基酸及 X/B/Z/J/U/O）"
+            % (identifier, "".join(sorted(invalid)))
+        )
+    if not cleaned:
+        raise FastaError("序列 %s 为空（未读到任何残基）。" % identifier)
+    return "".join(cleaned)
+
+
+def is_supported_fasta(path: str) -> bool:
+    """判断文件扩展名是否为 .fa / .faa / .fasta（大小写不敏感）。"""
+    return os.path.splitext(path)[1].lower() in SUPPORTED_EXTENSIONS
+
+
+def parse_fasta_text(text: str, max_sequences: int = MAX_SEQUENCES) -> List[SequenceRecord]:
+    """解析 FASTA 文本，返回 1~max_sequences 条记录。
+
+    `;` 与 `#` 开头的行视为注释；序列可跨多行；标题行第一个词作为 ID，
+    其余作为描述。
+    """
+    text = text.lstrip("\ufeff")
+    records: List[SequenceRecord] = []
+    header = None
+    buffer: List[str] = []
+
+    def flush() -> None:
+        nonlocal header, buffer
+        if header is None:
+            return
+        fields = header.split(None, 1)
+        identifier = fields[0] if fields else "sequence_%d" % (len(records) + 1)
+        description = fields[1].strip() if len(fields) > 1 else ""
+        records.append(SequenceRecord(identifier, description, clean_sequence("".join(buffer), identifier)))
+        header, buffer = None, []
+
+    for lineno, raw_line in enumerate(text.splitlines(), start=1):
+        line = raw_line.strip()
+        if not line or line.startswith(";") or line.startswith("#"):
+            continue
+        if line.startswith(">"):
+            flush()
+            header = line[1:].strip()
+            if not header:
+                raise FastaError("第 %d 行：FASTA 标题为空。" % lineno)
+        else:
+            if header is None:
+                raise FastaError("第 %d 行：在首个 '>' 标题之前出现序列内容。" % lineno)
+            buffer.append(line)
+    flush()
+
+    if not records:
+        raise FastaError("未找到任何序列，请确认文件为标准 FASTA 格式。")
+    if len(records) > max_sequences:
+        raise FastaError(
+            "序列数量为 %d，超出上限 %d 条，请拆分文件后重试。" % (len(records), max_sequences)
+        )
+
+    # 重复 ID 自动加序号，保证报告中可以区分
+    seen = {}
+    for record in records:
+        base = record.identifier
+        seen[base] = seen.get(base, 0) + 1
+        if seen[base] > 1:
+            record.identifier = "%s#%d" % (base, seen[base])
+    return records
+
+
+def read_fasta(path: str, max_sequences: int = MAX_SEQUENCES) -> List[SequenceRecord]:
+    """读取 FASTA 文件（.fa/.faa/.fasta）。
+
+    自动处理 UTF-8（含 BOM）、UTF-16 与 GBK 编码；扩展名不匹配时仍会
+    按 FASTA 格式尝试解析。
+    """
+    with open(path, "rb") as handle:
+        raw = handle.read()
+    if raw.startswith(b"\xff\xfe") or raw.startswith(b"\xfe\xff"):
+        text = raw.decode("utf-16")
+    else:
+        try:
+            text = raw.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            try:
+                text = raw.decode("gbk")
+            except UnicodeDecodeError as exc:
+                raise FastaError(
+                    "无法解码文件 %s，请另存为 UTF-8 或 GBK 编码后重试。" % path
+                ) from exc
+    return parse_fasta_text(text, max_sequences=max_sequences)
