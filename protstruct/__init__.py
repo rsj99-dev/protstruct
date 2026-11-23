@@ -26,7 +26,7 @@ from .fasta import FastaError, SequenceRecord, is_supported_fasta, parse_fasta_t
 from .figure import plot_consistency
 from .secondary_structure import SecondaryStructure, predict_secondary_structure
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = [
     "AnalysisConfig",

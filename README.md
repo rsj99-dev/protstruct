@@ -3,9 +3,10 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-v0.1.0-2563eb">
+  <img alt="version" src="https://img.shields.io/badge/version-v0.1.1-2563eb">
   <img alt="python" src="https://img.shields.io/badge/python-3.8%2B-3776ab">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-22c55e">
+  <a href="https://github.com/rsj99-dev/protstruct"><img alt="GitHub" src="https://img.shields.io/badge/GitHub-rsj99--dev%2Fprotstruct-181717?logo=github"></a>
 </p>
 
 # protstruct
@@ -35,13 +36,15 @@
 要求 Python 3.8+，无任何第三方依赖。
 
 ```powershell
-# 方式一：可编辑安装（推荐，安装后可直接使用 protstruct 命令）
+# 方式一：从 GitHub 克隆后安装（推荐）
+git clone https://github.com/rsj99-dev/protstruct.git
+cd protstruct/software
 pip install -e .
 
 # 如需导出一致性图，再安装可选依赖 matplotlib
 pip install -e ".[figure]"
 
-# 方式二：不安装，直接在项目根目录运行
+# 方式二：不安装，直接在本目录运行
 python -m protstruct examples/demo.fasta
 ```
 
@@ -255,7 +258,7 @@ python -m unittest discover -s tests -v
 ## 目录结构
 
 ```text
-protstruct/
+software/
 ├── protstruct/
 │   ├── __init__.py            # 对外 API
 │   ├── __main__.py            # python -m protstruct
@@ -278,9 +281,14 @@ protstruct/
 ├── tests/test_protstruct.py   # 单元测试
 ├── pyproject.toml
 ├── LICENSE
-├── README.md
-└── .gitignore
+└── README.md
 ```
+
+论文稿、论文图生成脚本和 MtbA 本地数据位于仓库根目录的 `../manuscript/`。
+
+## 论文稿
+
+[../manuscript/protstruct_manuscript_zh_v0.1.1.docx](../manuscript/protstruct_manuscript_zh_v0.1.1.docx) 是一份按 iMetaOmics Research Article 风格撰写的中文稿，包含结构化摘要、4 幅图、3 张表、数据与代码可用性以及 IRB 声明，并以示例数据和 MtbA 同源序列作为演示案例。论文与图表统一采用“海盐珊瑚”色系，中文为宋体，英文和数字为 Times New Roman。
 
 ## 许可证
 

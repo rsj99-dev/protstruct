@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "protstruct"
-version = "0.1.0"
+version = "0.1.1"
 description = "蛋白质二级结构（α-螺旋/β-折叠/β-转角）识别、二硫键与盐桥预测、多序列比对工具"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -24,6 +24,9 @@ figure = ["matplotlib>=3.3"]
 
 [project.scripts]
 protstruct = "protstruct.cli:main"
+
+[project.urls]
+Repository = "https://github.com/rsj99-dev/protstruct"
 
 [tool.setuptools.packages.find]
 include = ["protstruct*"]
