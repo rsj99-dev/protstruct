@@ -283,13 +283,6 @@ software/
 ├── LICENSE
 └── README.md
 ```
-
-论文稿、论文图生成脚本和 MtbA 本地数据位于仓库根目录的 `../manuscript/`。
-
-## 论文稿
-
-[../manuscript/protstruct_manuscript_zh_v0.1.1.docx](../manuscript/protstruct_manuscript_zh_v0.1.1.docx) 是一份按 iMetaOmics Research Article 风格撰写的中文稿，包含结构化摘要、4 幅图、3 张表、数据与代码可用性以及 IRB 声明，并以示例数据和 MtbA 同源序列作为演示案例。论文与图表统一采用“海盐珊瑚”色系，中文为宋体，英文和数字为 Times New Roman。
-
 ## 许可证
 
 本项目采用 MIT License，详见 [LICENSE](LICENSE)。
