@@ -3,7 +3,8 @@
 评分规则（与需求一致）：
     * 沿多序列比对逐列比较二级结构，相同记 1 分，不同记 0 分；
     * 任一侧为 gap 的列不参与比较；
-    * 二硫键、盐桥在比对列上“对应上”时，各记 0.5 分；
+    * 二硫键、盐桥在比对列上“对应上”时，各记 0.5 分；对应关系按
+      “结构特征列对”统一判断，盐桥对应二硫键也视为一次匹配；
     * 输出每条序列相对第一条序列的总分。
 """
 
@@ -35,6 +36,7 @@ class ConsistencyScore:
     total: float
     max_total: float
     is_reference: bool = False
+    feature_matches: int = 0
     disulfide_columns: List[Tuple[int, int]] = field(default_factory=list)
     salt_bridge_columns: List[Tuple[int, int]] = field(default_factory=list)
 
@@ -146,11 +148,10 @@ def compute_consistency(result: AnalysisResult) -> ConsistencyReport:
     reference_salt_bridges: Set[Tuple[int, int]] = set(
         _feature_columns([(bridge.pos_a, bridge.pos_b) for bridge in reference_item.salt_bridges], reference_map)
     )
+    reference_features = reference_disulfides | reference_salt_bridges
 
     aligned_ss = [align_secondary_structure(item.ss, aligned_sequences[index]) for index, item in enumerate(result.items)]
-    max_total = reference_item.length + FEATURE_POINT * (
-        len(reference_disulfides) + len(reference_salt_bridges)
-    )
+    max_total = reference_item.length + FEATURE_POINT * len(reference_features)
 
     scores: List[ConsistencyScore] = []
     for index, item in enumerate(result.items):
@@ -165,7 +166,9 @@ def compute_consistency(result: AnalysisResult) -> ConsistencyReport:
         )
         disulfide_matches = len(reference_disulfides.intersection(disulfide_columns))
         salt_bridge_matches = len(reference_salt_bridges.intersection(salt_bridge_columns))
-        total = matches * SS_POINT + (disulfide_matches + salt_bridge_matches) * FEATURE_POINT
+        target_features = set(disulfide_columns) | set(salt_bridge_columns)
+        feature_matches = len(reference_features.intersection(target_features))
+        total = matches * SS_POINT + feature_matches * FEATURE_POINT
         scores.append(
             ConsistencyScore(
                 identifier=item.identifier,
@@ -178,6 +181,7 @@ def compute_consistency(result: AnalysisResult) -> ConsistencyReport:
                 total=round(total, 2),
                 max_total=round(max_total, 2),
                 is_reference=index == 0,
+                feature_matches=feature_matches,
                 disulfide_columns=disulfide_columns,
                 salt_bridge_columns=salt_bridge_columns,
             )
@@ -203,6 +207,7 @@ CSV_HEADERS = [
     "二级结构一致率(%)",
     "二硫键匹配数",
     "盐桥匹配数",
+    "结构特征匹配数",
     "可比残基数",
     "序列长度",
     "是否参考序列",
@@ -226,6 +231,7 @@ def render_consistency_csv(report: ConsistencyReport) -> str:
                 "%.1f" % score.ss_rate,
                 score.disulfide_matches,
                 score.salt_bridge_matches,
+                score.feature_matches,
                 score.compared,
                 score.length,
                 "是" if score.is_reference else "否",

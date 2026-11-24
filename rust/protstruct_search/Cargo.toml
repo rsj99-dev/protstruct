@@ -1,0 +1,13 @@
+[package]
+name = "protstruct-search"
+version = "0.2.0"
+edition = "2021"
+description = "Parallel secondary-structure Smith-Waterman search core for protstruct"
+license = "MIT"
+
+[dependencies]
+rayon = "1.10"
+
+[profile.release]
+lto = true
+codegen-units = 1

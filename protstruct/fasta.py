@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 STANDARD_RESIDUES = "ACDEFGHIKLMNPQRSTVWY"
 MAX_SEQUENCES = 20
@@ -66,11 +66,11 @@ def is_supported_fasta(path: str) -> bool:
     return os.path.splitext(path)[1].lower() in SUPPORTED_EXTENSIONS
 
 
-def parse_fasta_text(text: str, max_sequences: int = MAX_SEQUENCES) -> List[SequenceRecord]:
-    """解析 FASTA 文本，返回 1~max_sequences 条记录。
+def parse_fasta_text(text: str, max_sequences: Optional[int] = MAX_SEQUENCES) -> List[SequenceRecord]:
+    """解析 FASTA 文本，返回记录列表。
 
     `;` 与 `#` 开头的行视为注释；序列可跨多行；标题行第一个词作为 ID，
-    其余作为描述。
+    其余作为描述。max_sequences=None 时不限制序列数（用于数据库检索）。
     """
     text = text.lstrip("\ufeff")
     records: List[SequenceRecord] = []
@@ -104,7 +104,7 @@ def parse_fasta_text(text: str, max_sequences: int = MAX_SEQUENCES) -> List[Sequ
 
     if not records:
         raise FastaError("未找到任何序列，请确认文件为标准 FASTA 格式。")
-    if len(records) > max_sequences:
+    if max_sequences is not None and len(records) > max_sequences:
         raise FastaError(
             "序列数量为 %d，超出上限 %d 条，请拆分文件后重试。" % (len(records), max_sequences)
         )
@@ -119,7 +119,7 @@ def parse_fasta_text(text: str, max_sequences: int = MAX_SEQUENCES) -> List[Sequ
     return records
 
 
-def read_fasta(path: str, max_sequences: int = MAX_SEQUENCES) -> List[SequenceRecord]:
+def read_fasta(path: str, max_sequences: Optional[int] = MAX_SEQUENCES) -> List[SequenceRecord]:
     """读取 FASTA 文件（.fa/.faa/.fasta）。
 
     自动处理 UTF-8（含 BOM）、UTF-16 与 GBK 编码；扩展名不匹配时仍会

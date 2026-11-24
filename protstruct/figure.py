@@ -1,85 +1,94 @@
-﻿"""二级结构一致性图（matplotlib 为可选依赖）。
+﻿"""Rust SVG 绘图入口（无 matplotlib / numpy 依赖）。
 
-图形内容：
-    上：逐列主要二级结构的一致比例；
-    中：全部序列按比对列排布的二级结构色块（H/E/T/C，gap 为白色）；
-    右：各序列相对第一条序列的总分；
-    图上圆点/方块标记二硫键、盐桥涉及的残基。
-
-配色采用“海盐珊瑚”色系，中文使用宋体，英文与数字使用 Times New Roman。
+Python 只负责把分析结果写成简单的 TSV，然后调用
+``software/rust/protstruct_plot`` 编译出的 ``protstruct-plot`` 生成 SVG。
 """
 
 from __future__ import annotations
 
-from typing import List, Tuple
+import os
+import subprocess
+import tempfile
+from pathlib import Path
+from typing import Iterable, List, Optional, Sequence
 
 from .analysis import AnalysisResult
-from .consistency import ConsistencyReport
-
-SS_COLORS = {
-    "H": "#F4A7AE",
-    "E": "#A7C7E7",
-    "T": "#A6D0C6",
-    "C": "#DADDE3",
-    "-": "#F7FAFC",
-}
-SS_ORDER = ["H", "E", "T", "C"]
-SS_LABELS = {
-    "H": "α-螺旋 (H)",
-    "E": "β-折叠 (E)",
-    "T": "β-转角 (T)",
-    "C": "无规卷曲 (C)",
-}
-_CODE = {"-": 0, "H": 1, "E": 2, "T": 3, "C": 4}
+from .consistency import ConsistencyReport, compute_consistency
 
 
-def _import_matplotlib():
-    try:
-        import matplotlib
-
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-        from matplotlib import font_manager
-        from matplotlib.colors import BoundaryNorm, ListedColormap
-        from matplotlib.lines import Line2D
-        from matplotlib.patches import Patch
-    except ImportError as exc:  # pragma: no cover - 取决于运行环境
-        raise RuntimeError(
-            "生成一致性图需要 matplotlib，请先执行：pip install matplotlib"
-        ) from exc
-    return plt, font_manager, BoundaryNorm, ListedColormap, Line2D, Patch
-
-
-def _configure_fonts(plt, font_manager) -> None:
-    available = {font.name for font in font_manager.fontManager.ttflist}
-    preferred = [
-        "Times New Roman",
-        "SimSun",
-        "Songti SC",
-        "Noto Serif CJK SC",
-        "DejaVu Serif",
+def _plot_binary() -> str:
+    configured = os.environ.get("PROTSTRUCT_PLOT_BIN")
+    if configured and Path(configured).is_file():
+        return configured
+    root = Path(__file__).resolve().parent.parent
+    candidates = [
+        root / "rust" / "protstruct_plot" / "target" / "release" / "protstruct-plot",
+        root / "rust" / "protstruct_plot" / "target" / "release" / "protstruct-plot.exe",
     ]
-    families = [name for name in preferred if name in available] or ["DejaVu Serif"]
-    plt.rcParams["font.family"] = families
-    plt.rcParams["axes.unicode_minus"] = False
-    plt.rcParams["text.color"] = "#334155"
-    plt.rcParams["axes.labelcolor"] = "#334155"
-    plt.rcParams["xtick.color"] = "#334155"
-    plt.rcParams["ytick.color"] = "#334155"
+    for candidate in candidates:
+        if candidate.is_file():
+            return str(candidate)
+    raise RuntimeError(
+        "未找到 Rust SVG 绘图程序 protstruct-plot。请先构建：\n"
+        "  cd software/rust/protstruct_plot && cargo build --release\n"
+        "或设置环境变量 PROTSTRUCT_PLOT_BIN。"
+    )
 
 
-def _ruler_step(width: int) -> int:
-    if width <= 60:
-        return 10
-    if width <= 200:
-        return 20
-    if width <= 600:
-        return 50
-    return 100
+def _run_plot(mode: str, output: str, data: Optional[str] = None) -> str:
+    path = Path(output)
+    if path.suffix.lower() != ".svg":
+        raise ValueError("Rust SVG 后端只支持 .svg 输出，请使用 .svg 扩展名。")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    input_path = None
+    try:
+        command = [_plot_binary(), mode, "--output", str(path)]
+        if data is not None:
+            with tempfile.NamedTemporaryFile("w", suffix=".tsv", delete=False, encoding="utf-8") as handle:
+                handle.write(data)
+                input_path = handle.name
+            command.extend(["--input", input_path])
+        process = subprocess.run(command, check=True, capture_output=True, text=True, encoding="utf-8")
+        if not path.is_file() or path.stat().st_size == 0:
+            raise RuntimeError("Rust SVG 绘图程序未生成文件：%s" % path)
+        return str(path)
+    except FileNotFoundError as exc:
+        raise RuntimeError("未找到 protstruct-plot，请先构建 Rust 绘图核心。") from exc
+    except subprocess.CalledProcessError as exc:
+        message = (exc.stderr or exc.stdout or "").strip()
+        raise RuntimeError("protstruct-plot 失败：%s" % message) from exc
+    finally:
+        if input_path:
+            try:
+                os.remove(input_path)
+            except OSError:
+                pass
 
 
-def _shorten(label: str, limit: int = 22) -> str:
-    return label if len(label) <= limit else label[: limit - 1] + "…"
+def plot_workflow(path: str) -> str:
+    """生成图 1（工作流）SVG。"""
+    return _run_plot("workflow", path)
+
+
+def _consistency_payload(result: AnalysisResult, report: ConsistencyReport) -> str:
+    lines = [
+        "REF\t%s" % report.reference,
+        "MAX\t%.6f" % report.max_total,
+        "WIDTH\t%d" % report.width,
+        "AGREE\t%s" % ",".join("%.6f" % value for value in report.agreement),
+    ]
+    for score, ss in zip(report.scores, report.aligned_ss):
+        lines.append("SS\t%s\t%s" % (score.identifier, ss))
+    for score in report.scores:
+        lines.append("SCORE\t%s\t%.6f\t%d" % (score.identifier, score.total, 1 if score.is_reference else 0))
+    for row, score in enumerate(report.scores):
+        for columns in score.disulfide_columns:
+            for column in columns:
+                lines.append("DS\t%d\t%d" % (row, column))
+        for columns in score.salt_bridge_columns:
+            for column in columns:
+                lines.append("SB\t%d\t%d" % (row, column))
+    return "\n".join(lines) + "\n"
 
 
 def plot_consistency(
@@ -89,149 +98,58 @@ def plot_consistency(
     dpi: int = 200,
     figure_scale: float = 1.0,
 ) -> str:
-    """绘制一致性图并保存为 png/svg/pdf，返回文件路径。
+    """生成图 2（一致性图）SVG。
 
-    figure_scale < 1 可在保持字号不变的情况下缩小画布，便于论文排版时保持
-    图片内文字的可读性。
+    dpi/figure_scale 保留用于兼容旧调用；SVG 为矢量输出，不需要 DPI。
     """
-    plt, font_manager, BoundaryNorm, ListedColormap, Line2D, Patch = _import_matplotlib()
-    _configure_fonts(plt, font_manager)
+    del dpi, figure_scale
+    return _run_plot("consistency", path, _consistency_payload(result, report))
 
-    width = max(1, report.width)
-    rows = max(1, len(report.aligned_ss))
-    figure_width = min(34.0, max(11.0, 3.0 + width * 0.055 + 2.6)) * figure_scale
-    figure_height = min(26.0, max(4.2, 2.4 + rows * 0.52)) * figure_scale
 
-    fig = plt.figure(figsize=(figure_width, figure_height), facecolor="white")
-    grid = fig.add_gridspec(
-        2,
-        2,
-        height_ratios=[1.0, rows],
-        width_ratios=[width, max(14.0, width * 0.22)],
-        hspace=0.06,
-        wspace=0.05,
-    )
-    ax_agreement = fig.add_subplot(grid[0, 0])
-    ax_map = fig.add_subplot(grid[1, 0], sharex=ax_agreement)
-    ax_score = fig.add_subplot(grid[1, 1], sharey=ax_map)
+def _short_label(identifier: str) -> str:
+    return identifier.split("（")[0].split("(")[0].strip()
 
-    # 上：逐列一致比例
-    agreement = list(report.agreement) + [0.0] * (width - len(report.agreement))
-    ax_agreement.bar(range(width), agreement, width=1.0, color="#A7C7E7", linewidth=0)
-    ax_agreement.set_ylim(0, 1.0)
-    ax_agreement.set_yticks([0.0, 0.5, 1.0])
-    ax_agreement.set_yticklabels(["0%", "50%", "100%"], fontsize=8)
-    ax_agreement.set_ylabel("逐列一致性", fontsize=8)
-    ax_agreement.tick_params(axis="x", labelbottom=False, length=0)
-    for spine in ("top", "right"):
-        ax_agreement.spines[spine].set_visible(False)
 
-    # 中：二级结构色块
-    matrix: List[List[int]] = []
-    for ss_row in report.aligned_ss:
-        matrix.append([_CODE.get(char, 4) for char in ss_row])
-    colormap = ListedColormap(
-        [SS_COLORS["-"], SS_COLORS["H"], SS_COLORS["E"], SS_COLORS["T"], SS_COLORS["C"]]
-    )
-    norm = BoundaryNorm([-0.5, 0.5, 1.5, 2.5, 3.5, 4.5], colormap.N)
-    ax_map.imshow(matrix, aspect="auto", interpolation="nearest", cmap=colormap, norm=norm)
-
-    identifiers = []
-    for index, score in enumerate(report.scores):
-        label = _shorten(score.identifier)
-        identifiers.append(label + "（参考）" if index == 0 else label)
-    ax_map.set_yticks(range(rows))
-    ax_map.set_yticklabels(identifiers, fontsize=9)
-    ax_map.tick_params(axis="y", length=0)
-    ax_map.set_xlim(-0.5, width - 0.5)
-    ax_map.set_ylim(rows - 0.5, -0.5)
-
-    step = _ruler_step(width)
-    ticks = list(range(0, width, step))
-    ax_map.set_xticks(ticks)
-    ax_map.set_xticklabels([str(tick + 1) for tick in ticks], fontsize=8)
-    ax_map.set_xlabel("比对位置（列）", fontsize=9)
-    if width <= 400:
-        for column in range(10, width, 10):
-            ax_map.axvline(column - 0.5, color="white", linewidth=0.4, alpha=0.65)
-    ax_map.grid(axis="y", color="white", linewidth=0.8)
-    for spine in ax_map.spines.values():
-        spine.set_color("#A7C7E7")
-
-    # 二硫键 / 盐桥残基标记
-    disulfide_points: List[Tuple[int, int]] = []
-    salt_points: List[Tuple[int, int]] = []
-    for row, score in enumerate(report.scores):
-        for column_a, column_b in score.disulfide_columns:
-            disulfide_points.extend([(column_a, row), (column_b, row)])
-        for column_a, column_b in score.salt_bridge_columns:
-            salt_points.extend([(column_a, row), (column_b, row)])
-    if disulfide_points:
-        ax_map.scatter(
-            [point[0] for point in disulfide_points],
-            [point[1] for point in disulfide_points],
-            s=9, c="#5878A6", marker="o", linewidths=0, zorder=3,
-        )
-    if salt_points:
-        ax_map.scatter(
-            [point[0] for point in salt_points],
-            [point[1] for point in salt_points],
-            s=12, c="#FBD9C9", marker="s", linewidths=0.5,
-            edgecolors="#5878A6", zorder=3, alpha=0.95,
-        )
-
-    # 右：总分条形图
-    totals = [score.total for score in report.scores]
-    colors = ["#5878A6" if score.is_reference else "#A7C7E7" for score in report.scores]
-    ax_score.barh(range(rows), totals, color=colors, height=0.62)
-    ax_score.set_xlim(0, report.max_total * 1.28 if report.max_total else 1.0)
-    ax_score.set_xlabel("总分（满分 %.1f）" % report.max_total, fontsize=8, labelpad=3)
-    ax_score.tick_params(axis="y", labelleft=False, length=0)
-    ax_score.tick_params(axis="x", labelsize=8)
-    ax_score.set_ylim(rows - 0.5, -0.5)
-    for row, total in enumerate(totals):
-        ax_score.text(total + report.max_total * 0.02, row, "%.1f" % total, va="center", fontsize=8)
-    for spine in ("top", "right"):
-        ax_score.spines[spine].set_visible(False)
-    ax_score.grid(axis="x", color="#DADDE3", linewidth=0.8)
-    ax_score.set_axisbelow(True)
-
-    legend_items = [
-        Patch(facecolor=SS_COLORS[kind], edgecolor="#A7C7E7", label=SS_LABELS[kind])
-        for kind in SS_ORDER
+def _mtba_payload(
+    paralog_result: AnalysisResult,
+    ortholog_result: AnalysisResult,
+    paralog_labels: Optional[Sequence[str]],
+    ortholog_labels: Optional[Sequence[str]],
+) -> str:
+    paralog_report = compute_consistency(paralog_result)
+    ortholog_report = compute_consistency(ortholog_result)
+    labels_paralog = list(paralog_labels) if paralog_labels else [
+        _short_label(item.identifier) for item in paralog_result.items
     ]
-    legend_items.append(
-        Line2D([0], [0], marker="o", color="none", markerfacecolor="#5878A6",
-               markersize=4, label="二硫键残基")
-    )
-    legend_items.append(
-        Line2D([0], [0], marker="s", color="none", markerfacecolor="#FBD9C9",
-               markeredgecolor="#5878A6", markersize=4, label="盐桥残基")
-    )
-    fig.legend(
-        handles=legend_items,
-        loc="lower center",
-        ncol=6,
-        frameon=False,
-        fontsize=9,
-        bbox_to_anchor=(0.5, 0.055),
-    )
+    labels_ortholog = list(ortholog_labels) if ortholog_labels else [
+        item.identifier for item in ortholog_result.items
+    ]
+    lines = []
+    for label, item, score in zip(labels_paralog, paralog_result.items, paralog_report.scores):
+        fractions = item.fractions()
+        lines.append(
+            "PARA\t%s\t%.4f\t%.4f\t%.4f\t%.4f"
+            % (label, fractions["H"] * 100, fractions["E"] * 100, fractions["C"] * 100, score.total)
+        )
+    for label, item, score in zip(labels_ortholog, ortholog_result.items, ortholog_report.scores):
+        fractions = item.fractions()
+        lines.append(
+            "ORTH\t%s\t%.4f\t%.4f\t%.4f\t%.4f"
+            % (label, fractions["H"] * 100, fractions["E"] * 100, fractions["C"] * 100, score.total)
+        )
+    return "\n".join(lines) + "\n"
 
-    fig.suptitle(
-        "多序列二级结构一致性图（参考序列：%s）" % report.reference,
-        fontsize=13,
-        y=0.995,
-    )
-    fig.text(
-        0.5,
-        0.932,
-        "逐列比较：二级结构相同 +1，不同 0；二硫键/盐桥对应 +0.5；参考序列为第一条序列",
-        ha="center",
-        fontsize=8,
-        color="#5878A6",
-    )
-    fig.subplots_adjust(left=0.09, right=0.985, top=0.89, bottom=0.21)
 
-    fig.savefig(path, dpi=dpi, facecolor="white", bbox_inches="tight")
-    plt.close(fig)
-    return path
+def plot_mtba(
+    paralog_result: AnalysisResult,
+    ortholog_result: AnalysisResult,
+    path: str,
+    paralog_labels: Optional[Sequence[str]] = None,
+    ortholog_labels: Optional[Sequence[str]] = None,
+) -> str:
+    """生成合并后的图 3（A–D 四面板）SVG。"""
+    return _run_plot(
+        "mtba",
+        path,
+        _mtba_payload(paralog_result, ortholog_result, paralog_labels, ortholog_labels),
+    )

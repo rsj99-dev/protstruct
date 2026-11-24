@@ -49,7 +49,7 @@ def _ruler(start: int, length: int) -> str:
 
 def _format_regions(item: SequenceAnalysis, limit: int = 10) -> str:
     parts = []
-    for kind in ("H", "E", "T"):
+    for kind in ("H", "E"):
         regions = item.secondary_structure.region_list(kind)
         if not regions:
             continue
@@ -89,11 +89,10 @@ def _render_sequence_details(item: SequenceAnalysis, index: int) -> str:
     if item.record.description:
         lines.append("    描述     : %s" % item.record.description)
     lines.append(
-        "    二级结构 : α-螺旋 %d (%.1f%%) | β-折叠 %d (%.1f%%) | β-转角 %d (%.1f%%) | 无规卷曲 %d (%.1f%%)"
+        "    二级结构 : α-螺旋 %d (%.1f%%) | β-折叠 %d (%.1f%%) | coil/卷曲 %d (%.1f%%)"
         % (
             counts["H"], fractions["H"] * 100,
             counts["E"], fractions["E"] * 100,
-            counts["T"], fractions["T"] * 100,
             counts["C"], fractions["C"] * 100,
         )
     )
@@ -175,7 +174,7 @@ def render_text(result: AnalysisResult) -> str:
         separator,
         "输入文件 : %s" % result.source,
         "序列条数 : %d 条（上限 %d）" % (result.count, result.config.max_sequences),
-        "二级结构 : Chou-Fasman 构象倾向因子法",
+        "二级结构 : GOR IV 信息论模型（H/E/C）",
         "多序列比对: center-star + Needleman-Wunsch（BLOSUM62，仿射空位罚分）",
         "结构校验 : %s" % ("PDB 结构：%s" % result.config.pdb_path if result.config.pdb_path else "未提供 PDB（二硫键/盐桥为序列层面预测）"),
         thin,
@@ -191,7 +190,6 @@ def render_text(result: AnalysisResult) -> str:
                 str(row["length"]),
                 "%.1f%% (%d)" % (row["helix_pct"], row["helix_count"]),
                 "%.1f%% (%d)" % (row["sheet_pct"], row["sheet_count"]),
-                "%.1f%% (%d)" % (row["turn_pct"], row["turn_count"]),
                 "%.1f%% (%d)" % (row["coil_pct"], row["coil_count"]),
                 str(row["cys_count"]),
                 str(row["disulfide_count"]),
@@ -200,7 +198,7 @@ def render_text(result: AnalysisResult) -> str:
         )
     lines.append(
         _table(
-            ["#", "序列ID", "长度", "α-螺旋", "β-折叠", "β-转角", "无规卷曲", "Cys", "二硫键", "盐桥"],
+            ["#", "序列ID", "长度", "α-螺旋", "β-折叠", "coil/卷曲", "Cys", "二硫键", "盐桥"],
             rows,
         )
     )
@@ -212,7 +210,7 @@ def render_text(result: AnalysisResult) -> str:
         lines.append(_render_sequence_details(item, index))
         lines.append("")
     lines.append(thin)
-    lines.append("三、多序列比对（H=螺旋 E=折叠 T=转角 C=卷曲，* 完全一致 : 相似 . 含空位）")
+    lines.append("三、多序列比对（H=螺旋 E=折叠 C=coil/卷曲，* 完全一致 : 相似 . 含空位）")
     lines.append(thin)
     lines.append(_render_alignment(result))
     lines.append("")
@@ -234,19 +232,18 @@ def render_markdown(result: AnalysisResult) -> str:
     lines = ["# protstruct 蛋白质二级结构比对报告", ""]
     lines.append("- 输入文件：`%s`" % result.source)
     lines.append("- 序列条数：%d 条（上限 %d）" % (result.count, result.config.max_sequences))
-    lines.append("- 二级结构：Chou-Fasman 构象倾向因子法")
+    lines.append("- 二级结构：GOR IV 信息论模型（H/E/C）")
     lines.append("- 多序列比对：center-star + Needleman-Wunsch（BLOSUM62）")
     lines.append("")
     lines.append("## 一、序列概览")
     lines.append("")
     lines.append(_table(
-        ["#", "序列ID", "长度", "α-螺旋", "β-折叠", "β-转角", "无规卷曲", "Cys", "二硫键", "盐桥"],
+        ["#", "序列ID", "长度", "α-螺旋", "β-折叠", "coil/卷曲", "Cys", "二硫键", "盐桥"],
         [
             [
                 str(row["index"]), row["identifier"], str(row["length"]),
                 "%.1f%% (%d)" % (row["helix_pct"], row["helix_count"]),
                 "%.1f%% (%d)" % (row["sheet_pct"], row["sheet_count"]),
-                "%.1f%% (%d)" % (row["turn_pct"], row["turn_count"]),
                 "%.1f%% (%d)" % (row["coil_pct"], row["coil_count"]),
                 str(row["cys_count"]), str(row["disulfide_count"]), str(row["salt_bridge_count"]),
             ]
@@ -323,7 +320,7 @@ def render_json(result: AnalysisResult) -> str:
     payload = {
         "source": result.source,
         "method": {
-            "secondary_structure": "Chou-Fasman propensity",
+            "secondary_structure": "GOR IV information theory",
             "alignment": "center-star + Needleman-Wunsch (BLOSUM62, affine gap)",
         },
         "config": {
@@ -383,7 +380,7 @@ def render_csv(result: AnalysisResult) -> str:
     fieldnames = [
         "index", "identifier", "length",
         "helix_count", "helix_pct", "sheet_count", "sheet_pct",
-        "turn_count", "turn_pct", "coil_count", "coil_pct",
+        "coil_count", "coil_pct",
         "cys_count", "disulfide_count", "salt_bridge_count",
     ]
     writer = csv.DictWriter(buffer, fieldnames=fieldnames)

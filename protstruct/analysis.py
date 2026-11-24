@@ -155,8 +155,6 @@ def summarize(result: AnalysisResult) -> List[dict]:
                 "helix_pct": round(fractions["H"] * 100, 1),
                 "sheet_count": counts["E"],
                 "sheet_pct": round(fractions["E"] * 100, 1),
-                "turn_count": counts["T"],
-                "turn_pct": round(fractions["T"] * 100, 1),
                 "coil_count": counts["C"],
                 "coil_pct": round(fractions["C"] * 100, 1),
                 "cys_count": len(item.disulfides.cysteines),

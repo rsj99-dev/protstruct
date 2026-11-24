@@ -1,0 +1,12 @@
+[package]
+name = "protstruct-plot"
+version = "0.2.0"
+edition = "2021"
+description = "Dependency-free SVG figure generator for protstruct"
+license = "MIT"
+
+[dependencies]
+
+[profile.release]
+lto = true
+codegen-units = 1

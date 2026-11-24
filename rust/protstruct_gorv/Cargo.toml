@@ -1,0 +1,13 @@
+[package]
+name = "protstruct-gorv"
+version = "0.2.0"
+edition = "2021"
+description = "GOR IV/V (gor5_4 + gor5_3) secondary-structure predictor for protstruct"
+license = "MIT"
+
+[dependencies]
+rayon = "1.10"
+
+[profile.release]
+lto = true
+codegen-units = 1

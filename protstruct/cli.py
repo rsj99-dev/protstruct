@@ -18,7 +18,7 @@ from .report import render
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="protstruct",
-        description="蛋白质二级结构识别与多序列比对工具：α-螺旋、β-折叠、β-转角、二硫键、盐桥。",
+        description="蛋白质二级结构识别与多序列比对工具：H/α-螺旋、E/β-折叠、C/coil（含β-转角）、二硫键、盐桥。",
         formatter_class=argparse.RawTextHelpFormatter,
     )
     parser.add_argument("fasta", nargs="?", help="输入 FASTA 文件（.fa/.faa/.fasta，支持 1-20 条序列）")
@@ -43,11 +43,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-alignment", action="store_true", help="跳过多序列比对")
     parser.add_argument(
         "--figure", metavar="PATH",
-        help="输出二级结构一致性图（.png/.svg/.pdf）；未给 --scores 时自动生成同名 _scores.csv",
+        help="输出二级结构一致性 SVG 图；未给 --scores 时自动生成同名 _scores.csv",
     )
     parser.add_argument(
         "--scores", metavar="PATH",
-        help="输出二级结构一致性评分 CSV；未给 --figure 时自动生成同名 .png",
+        help="输出二级结构一致性评分 CSV；未给 --figure 时自动生成同名 .svg",
     )
     parser.add_argument("--version", action="version", version="protstruct %s" % __version__)
     return parser
@@ -92,7 +92,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
 
     if args.figure or args.scores:
-        figure_path = args.figure or (os.path.splitext(args.scores)[0] + ".png")
+        figure_path = args.figure or (os.path.splitext(args.scores)[0] + ".svg")
         scores_path = args.scores or (os.path.splitext(args.figure)[0] + "_scores.csv")
         try:
             consistency = compute_consistency(result)
