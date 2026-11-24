@@ -326,8 +326,6 @@ software/
 └── README.md
 ```
 
-`software/` 可独立作为代码包发布；论文稿、论文图与复现包（数据、脚本、输出）位于项目根目录的 `../manuscript/`。
-
 ## 许可证
 
 本项目采用 MIT License，详见 [LICENSE](LICENSE)。
