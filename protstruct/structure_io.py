@@ -81,7 +81,7 @@ def _parse_atoms(path: str) -> List[Tuple[str, int, str, str, Tuple[float, float
                 continue
             atoms.append((chain, residue_id, residue_name, atom_name, coord))
     if not atoms:
-        raise ValueError("未能从 %s 中解析到任何原子，请确认是 PDB 格式。" % path)
+        raise ValueError("No atoms could be parsed from %s; please check that it is a PDB file." % path)
     return atoms
 
 

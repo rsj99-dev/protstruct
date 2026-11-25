@@ -2,7 +2,7 @@
 
 流程：
     1. 读取查询 FASTA 与数据库 FASTA；
-    2. 用 GOR V 预测每条序列的 H/E/C；
+    2. 用 PSIPRED V4.1 预测每条序列的 H/E/C；
     3. 用序列/二级结构 k-mer 做快速预筛；
     4. 对候选做二级结构 Smith-Waterman 局部比对；
     5. 按二级结构得分与序列 k-mer 相似度排序，输出 TSV。
@@ -296,28 +296,28 @@ def render_hits(hits: Sequence[SearchHit]) -> str:
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         prog="protstruct-search",
-        description="基于 GOR V 二级结构的蛋白质数据库检索（类似 BLAST+/DIAMOND2 的 SS 搜索）。",
+        description="PSIPRED V4.1 secondary-structure database search (BLAST+/DIAMOND2-style SS search).",
     )
-    parser.add_argument("query", help="查询 FASTA（取第一条序列）")
-    parser.add_argument("database", help="数据库 FASTA（序列数量不设上限）")
-    parser.add_argument("--top", type=int, default=20, help="输出前 N 条命中，默认 20")
-    parser.add_argument("--prefilter", type=int, default=2000, help="k-mer 预筛候选数，默认 2000")
-    parser.add_argument("--threads", type=int, default=0, help="Rust 线程数；0 表示使用全部 CPU")
-    parser.add_argument("--min-ss-identity", type=float, default=0.0, help="最低 SS 一致率")
-    parser.add_argument("--min-coverage", type=float, default=0.0, help="最低查询覆盖度")
-    parser.add_argument("--cache", help="可选 SS 缓存 JSON 路径")
-    parser.add_argument("--output", "-o", help="输出 TSV 文件；默认打印到终端")
-    parser.add_argument("--no-rust", action="store_true", help="强制使用 Python 回退")
+    parser.add_argument("query", help="Query FASTA (first sequence only)")
+    parser.add_argument("database", help="Database FASTA (no sequence-count limit)")
+    parser.add_argument("--top", type=int, default=20, help="Number of hits to report (default: 20)")
+    parser.add_argument("--prefilter", type=int, default=2000, help="Number of k-mer prefilter candidates (default: 2000)")
+    parser.add_argument("--threads", type=int, default=0, help="Rust thread count; 0 uses all CPUs")
+    parser.add_argument("--min-ss-identity", type=float, default=0.0, help="Minimum SS identity")
+    parser.add_argument("--min-coverage", type=float, default=0.0, help="Minimum query coverage")
+    parser.add_argument("--cache", help="Optional SS cache JSON path")
+    parser.add_argument("--output", "-o", help="Write TSV to a file (default: stdout)")
+    parser.add_argument("--no-rust", action="store_true", help="Force the Python fallback")
     args = parser.parse_args(argv)
 
     try:
         query_records = read_fasta(args.query, max_sequences=None)
         database = read_fasta(args.database, max_sequences=None)
     except (OSError, ValueError) as exc:
-        print("错误: %s" % exc, file=sys.stderr)
+        print("Error: %s" % exc, file=sys.stderr)
         return 2
     if len(query_records) > 1:
-        print("提示: 查询文件包含多条序列，仅使用第一条 %s。" % query_records[0].identifier, file=sys.stderr)
+        print("Note: the query file contains multiple sequences; using the first one (%s)." % query_records[0].identifier, file=sys.stderr)
 
     config = SearchConfig(
         top_n=args.top,
@@ -335,10 +335,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.output:
         with open(args.output, "w", encoding="utf-8") as handle:
             handle.write(text + "\n")
-        print("命中结果已写入 %s（%d 条，%.2f s）" % (args.output, len(hits), elapsed))
+        print("Hits written to %s (%d hits, %.2f s)" % (args.output, len(hits), elapsed))
     else:
         print(text)
-        print("查询: %s；数据库: %d 条；命中: %d 条；耗时: %.2f s" % (
+        print("Query: %s; database: %d sequences; hits: %d; elapsed: %.2f s" % (
             query_records[0].identifier, len(database), len(hits), elapsed
         ), file=sys.stderr)
     return 0

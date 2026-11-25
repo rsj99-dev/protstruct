@@ -4,16 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "protstruct"
-version = "0.2.0"
-description = "蛋白质 GOR IV 二级结构（H/E/C）识别、二硫键与盐桥预测、多序列比对与数据库检索工具"
+version = "0.3.0"
+description = "PSIPRED V4.1 protein secondary-structure prediction, disulfide and salt-bridge analysis, multiple-sequence alignment, consistency scoring, and database search"
 readme = "README.md"
 requires-python = ">=3.8"
 authors = [{ name = "rsj99-dev", email = "rsj1999@njtech.edu.cn" }]
 license = { file = "LICENSE" }
-keywords = ["protein", "secondary-structure", "disulfide", "salt-bridge", "fasta", "alignment"]
+keywords = ["protein", "secondary-structure", "psipred", "disulfide", "salt-bridge", "fasta", "alignment"]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
     "Operating System :: OS Independent",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
 ]
@@ -30,4 +30,4 @@ Repository = "https://github.com/rsj99-dev/protstruct"
 include = ["protstruct*"]
 
 [tool.setuptools.package-data]
-protstruct = ["data/*.mod", "data/*.bin", "data/*.txt"]
+protstruct = ["data/*"]

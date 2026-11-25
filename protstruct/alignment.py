@@ -261,7 +261,7 @@ def _identity_matrix(aligned: Sequence[str]) -> List[List[float]]:
 def build_alignment(identifiers: Sequence[str], sequences: Sequence[str]) -> AlignmentResult:
     """以最相似序列为中心进行 center-star 渐进比对。"""
     if not sequences:
-        raise ValueError("至少需要一条序列才能比对。")
+        raise ValueError("At least one sequence is required for alignment.")
     if len(sequences) == 1:
         consensus, conservation = _consensus([sequences[0]])
         return AlignmentResult(
@@ -301,7 +301,7 @@ def build_alignment(identifiers: Sequence[str], sequences: Sequence[str]) -> Ali
 def align_secondary_structure(ss: str, gapped_sequence: str) -> str:
     """把预测的二级结构字符串按比对后的 gap 位置补齐，便于逐列对照。"""
     if len(ss) != len(gapped_sequence.replace("-", "")):
-        raise ValueError("二级结构长度与去 gap 后的序列长度不一致。")
+        raise ValueError("Secondary-structure length does not match the ungapped sequence length.")
     padded: List[str] = []
     cursor = 0
     for char in gapped_sequence:

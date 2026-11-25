@@ -1,6 +1,6 @@
 [package]
 name = "protstruct-search"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "Parallel secondary-structure Smith-Waterman search core for protstruct"
 license = "MIT"

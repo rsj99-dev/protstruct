@@ -228,9 +228,10 @@ class ConsistencyTests(unittest.TestCase):
         report = compute_consistency(self._result())
         rows = list(csv.DictReader(io.StringIO(render_consistency_csv(report))))
         self.assertEqual(len(rows), 2)
-        self.assertEqual(rows[0]["总分"], "11.00")
-        self.assertEqual(rows[0]["是否参考序列"], "是")
-        self.assertEqual(rows[1]["二级结构一致数"], "10")
+        self.assertEqual(rows[0]["Total score"], "11.00")
+        self.assertEqual(rows[0]["Score ratio (%)"], "100.0")
+        self.assertEqual(rows[0]["Reference"], "Yes")
+        self.assertEqual(rows[1]["SS matches"], "10")
 
     def test_demo_reference_is_first(self):
         result = analyze_fasta(DEMO)
@@ -318,12 +319,12 @@ class AnalysisAndReportTests(unittest.TestCase):
         records = parse_fasta_text(">solo\nACDEFGHIKLMNPQRSTVWY\n")
         result = analyze_records(records)
         self.assertIsNone(result.alignment)
-        self.assertIn("仅有一条序列", render(result, "text"))
+        self.assertIn("Multiple-sequence alignment skipped", render(result, "text"))
 
     def test_all_formats(self):
         text = render(self.result, "text")
-        self.assertIn("α-螺旋", text)
-        self.assertIn("多序列比对", text)
+        self.assertIn("α-helix", text)
+        self.assertIn("Multiple-sequence alignment", text)
         markdown = render(self.result, "markdown")
         self.assertIn("# protstruct", markdown)
         payload = json.loads(render(self.result, "json"))
@@ -419,7 +420,7 @@ class CliTests(unittest.TestCase):
             with open(scores, "r", encoding="utf-8-sig") as handle:
                 rows = list(csv.DictReader(handle))
             self.assertEqual(len(rows), 5)
-            self.assertEqual(rows[0]["序列ID"], "lysozyme")
+            self.assertEqual(rows[0]["Sequence ID"], "lysozyme")
 
     def test_cli_derives_missing_output_path(self):
         from protstruct.cli import main

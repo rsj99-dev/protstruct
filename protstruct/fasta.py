@@ -53,11 +53,11 @@ def clean_sequence(raw: str, identifier: str) -> str:
             invalid.add(char)
     if invalid:
         raise FastaError(
-            "序列 %s 含非法残基字符: %s（支持 20 种标准氨基酸及 X/B/Z/J/U/O）"
+            "Sequence %s contains invalid residues: %s (20 standard amino acids and X/B/Z/J/U/O are supported)"
             % (identifier, "".join(sorted(invalid)))
         )
     if not cleaned:
-        raise FastaError("序列 %s 为空（未读到任何残基）。" % identifier)
+        raise FastaError("Sequence %s is empty (no residues found)." % identifier)
     return "".join(cleaned)
 
 
@@ -95,18 +95,18 @@ def parse_fasta_text(text: str, max_sequences: Optional[int] = MAX_SEQUENCES) ->
             flush()
             header = line[1:].strip()
             if not header:
-                raise FastaError("第 %d 行：FASTA 标题为空。" % lineno)
+                raise FastaError("Line %d: empty FASTA header." % lineno)
         else:
             if header is None:
-                raise FastaError("第 %d 行：在首个 '>' 标题之前出现序列内容。" % lineno)
+                raise FastaError("Line %d: sequence data found before the first '>' header." % lineno)
             buffer.append(line)
     flush()
 
     if not records:
-        raise FastaError("未找到任何序列，请确认文件为标准 FASTA 格式。")
+        raise FastaError("No sequences found; please check that the file is valid FASTA.")
     if max_sequences is not None and len(records) > max_sequences:
         raise FastaError(
-            "序列数量为 %d，超出上限 %d 条，请拆分文件后重试。" % (len(records), max_sequences)
+            "Sequence count %d exceeds the limit of %d; please split the file." % (len(records), max_sequences)
         )
 
     # 重复 ID 自动加序号，保证报告中可以区分
@@ -137,6 +137,6 @@ def read_fasta(path: str, max_sequences: Optional[int] = MAX_SEQUENCES) -> List[
                 text = raw.decode("gbk")
             except UnicodeDecodeError as exc:
                 raise FastaError(
-                    "无法解码文件 %s，请另存为 UTF-8 或 GBK 编码后重试。" % path
+                    "Cannot decode %s; please save it as UTF-8 or GBK." % path
                 ) from exc
     return parse_fasta_text(text, max_sequences=max_sequences)

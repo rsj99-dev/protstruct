@@ -10,9 +10,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Optional
 
-ACIDIC = {"D": "天冬氨酸", "E": "谷氨酸"}
-BASIC = {"K": "赖氨酸", "R": "精氨酸"}
-WEAK_BASIC = {"H": "组氨酸"}
+ACIDIC = {"D": "Aspartate", "E": "Glutamate"}
+BASIC = {"K": "Lysine", "R": "Arginine"}
+WEAK_BASIC = {"H": "Histidine"}
 
 
 @dataclass
@@ -30,10 +30,10 @@ class SaltBridgeCandidate:
     @property
     def confidence(self) -> str:
         if self.score >= 0.9:
-            return "高"
+            return "high"
         if self.score >= 0.7:
-            return "中"
-        return "低"
+            return "medium"
+        return "low"
 
     def __str__(self) -> str:
         return "%s%d-%s%d" % (self.res_a, self.pos_a, self.res_b, self.pos_b)
@@ -42,15 +42,15 @@ class SaltBridgeCandidate:
 def _geometry(ss_a: str, ss_b: str, separation: int) -> str:
     if ss_a == "H" and ss_b == "H":
         if separation == 3:
-            return "α-螺旋 i,i+3"
+            return "α-helix i,i+3"
         if separation == 4:
-            return "α-螺旋 i,i+4"
+            return "α-helix i,i+4"
         if separation == 5:
-            return "α-螺旋 i,i+5"
-        return "α-螺旋区"
+            return "α-helix i,i+5"
+        return "α-helix region"
     if ss_a == "E" and ss_b == "E":
-        return "β-折叠区"
-    return "卷曲/跨区（几何未知）"
+        return "β-sheet region"
+    return "Coil/cross-region (geometry unknown)"
 
 
 def predict_salt_bridges(

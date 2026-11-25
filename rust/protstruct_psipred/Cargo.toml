@@ -1,0 +1,12 @@
+[package]
+name = "protstruct-psipred"
+version = "0.3.0"
+edition = "2021"
+description = "Dependency-free Rust implementation of PSIPRED V4.1 single-sequence inference"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+
+[profile.release]
+lto = true
+codegen-units = 1

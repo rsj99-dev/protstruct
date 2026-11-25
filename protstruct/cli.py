@@ -18,36 +18,36 @@ from .report import render
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="protstruct",
-        description="蛋白质二级结构识别与多序列比对工具：H/α-螺旋、E/β-折叠、C/coil（含β-转角）、二硫键、盐桥。",
+        description="PSIPRED V4.1 protein secondary-structure and multi-sequence alignment tool: H/α-helix, E/β-sheet, C/coil (including β-turn), disulfides and salt bridges.",
         formatter_class=argparse.RawTextHelpFormatter,
     )
-    parser.add_argument("fasta", nargs="?", help="输入 FASTA 文件（.fa/.faa/.fasta，支持 1-20 条序列）")
+    parser.add_argument("fasta", nargs="?", help="Input FASTA file (.fa/.faa/.fasta; 1-20 sequences)")
     parser.add_argument(
         "-f", "--format", default="text", choices=["text", "markdown", "json", "csv"],
-        help="输出格式，默认 text",
+        help="Output format (default: text)",
     )
-    parser.add_argument("-o", "--output", help="输出到文件（UTF-8），默认打印到终端")
-    parser.add_argument("--pdb", dest="pdb_path", help="可选 PDB 结构文件，用于核验真实二硫键与盐桥")
+    parser.add_argument("-o", "--output", help="Write output to a UTF-8 file (default: stdout)")
+    parser.add_argument("--pdb", dest="pdb_path", help="Optional PDB file for validating disulfides and salt bridges")
     parser.add_argument(
         "--salt-bridge-window", type=int, default=25,
-        help="盐桥候选的最大序列间隔，默认 25",
+        help="Maximum sequence separation for salt-bridge candidates (default: 25)",
     )
     parser.add_argument(
         "--min-disulfide-separation", type=int, default=4,
-        help="二硫键配对的最短序列间隔，默认 4",
+        help="Minimum sequence separation for disulfide pairing (default: 4)",
     )
     parser.add_argument(
         "--max-salt-bridges", type=int, default=8,
-        help="每条序列最多输出的盐桥候选数，默认 8",
+        help="Maximum salt-bridge candidates per sequence (default: 8)",
     )
-    parser.add_argument("--no-alignment", action="store_true", help="跳过多序列比对")
+    parser.add_argument("--no-alignment", action="store_true", help="Skip multiple-sequence alignment")
     parser.add_argument(
         "--figure", metavar="PATH",
-        help="输出二级结构一致性 SVG 图；未给 --scores 时自动生成同名 _scores.csv",
+        help="Write the secondary-structure consistency SVG; auto-create _scores.csv when --scores is omitted",
     )
     parser.add_argument(
         "--scores", metavar="PATH",
-        help="输出二级结构一致性评分 CSV；未给 --figure 时自动生成同名 .svg",
+        help="Write the consistency-score CSV; auto-create a same-name .svg when --figure is omitted",
     )
     parser.add_argument("--version", action="version", version="protstruct %s" % __version__)
     return parser
@@ -71,7 +71,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 1
     if not is_supported_fasta(args.fasta):
         print(
-            "提示: %s 不是 .fa/.faa/.fasta 扩展名，将按 FASTA 格式尝试解析。" % args.fasta,
+            "Note: %s does not have a .fa/.faa/.fasta extension; attempting FASTA parsing." % args.fasta,
             file=sys.stderr,
         )
 
@@ -85,10 +85,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         result = analyze_fasta(args.fasta, config=config)
     except FileNotFoundError:
-        print("错误: 找不到文件 %s" % args.fasta, file=sys.stderr)
+        print("Error: file not found: %s" % args.fasta, file=sys.stderr)
         return 2
     except (FastaError, ValueError) as exc:
-        print("错误: %s" % exc, file=sys.stderr)
+        print("Error: %s" % exc, file=sys.stderr)
         return 2
 
     if args.figure or args.scores:
@@ -99,16 +99,16 @@ def main(argv: Optional[List[str]] = None) -> int:
             plot_consistency(result, consistency, figure_path)
             write_consistency_csv(consistency, scores_path)
         except RuntimeError as exc:
-            print("错误: %s" % exc, file=sys.stderr)
+            print("Error: %s" % exc, file=sys.stderr)
             return 3
         except (ValueError, OSError) as exc:
-            print("错误: 写入输出文件失败（%s）" % exc, file=sys.stderr)
+            print("Error: cannot write output file (%s)" % exc, file=sys.stderr)
             return 3
         summary = " | ".join(
             "%s %.1f" % (score.identifier, score.total) for score in consistency.scores
         )
         _print_safe(
-            "一致性图  : %s\n一致性CSV : %s\n参考序列  : %s\n总分      : %s"
+            "SVG figure : %s\nScore CSV  : %s\nReference  : %s\nTotal score: %s"
             % (figure_path, scores_path, consistency.reference, summary)
         )
         if not args.output:
@@ -118,7 +118,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.output:
         with open(args.output, "w", encoding="utf-8") as handle:
             handle.write(text)
-        print("报告已写入 %s" % args.output)
+        print("Report written to %s" % args.output)
     else:
         _print_safe(text)
     return 0

@@ -55,28 +55,28 @@ def _format_regions(item: SequenceAnalysis, limit: int = 10) -> str:
             continue
         spans = ", ".join("%d-%d" % (region.start, region.end) for region in regions[:limit])
         if len(regions) > limit:
-            spans += " …(共 %d 段)" % len(regions)
+            spans += " … (%d regions)" % len(regions)
         parts.append("%s: %s" % (SS_NAMES[kind], spans))
-    return "；".join(parts) if parts else "未预测到规则二级结构"
+    return "; ".join(parts) if parts else "No regular secondary-structure regions predicted"
 
 
 def _format_disulfides(item: SequenceAnalysis, limit: int = 8) -> str:
     bonds = item.disulfides.bonds
     if not bonds:
-        return "无（Cys 数量不足或均未配对）" if len(item.disulfides.cysteines) < 2 else "未预测到配对"
-    parts = ["%s(%.2f, %s)" % (bond, bond.score, "高" if bond.score >= 0.7 else "中" if bond.score >= 0.45 else "低") for bond in bonds[:limit]]
+        return "None (fewer than two Cys or no valid pairing)" if len(item.disulfides.cysteines) < 2 else "No pairing predicted"
+    parts = ["%s(%.2f, %s)" % (bond, bond.score, "high" if bond.score >= 0.7 else "medium" if bond.score >= 0.45 else "low") for bond in bonds[:limit]]
     if len(bonds) > limit:
-        parts.append("…(共 %d 对)" % len(bonds))
+        parts.append("… (%d pairs)" % len(bonds))
     return "；".join(parts)
 
 
 def _format_salt_bridges(item: SequenceAnalysis, limit: int = 8) -> str:
     bridges = item.salt_bridges
     if not bridges:
-        return "未找到候选（窗口内无酸性-碱性残基对）"
+        return "No candidates (no acidic-basic residue pair within the window)"
     parts = ["%s(%s, %s)" % (bridge, bridge.confidence, bridge.geometry) for bridge in bridges[:limit]]
     if len(bridges) > limit:
-        parts.append("…(共 %d 对)" % len(bridges))
+        parts.append("… (%d pairs)" % len(bridges))
     return "；".join(parts)
 
 
@@ -87,29 +87,29 @@ def _render_sequence_details(item: SequenceAnalysis, index: int) -> str:
     title = "[%d] %s  (%d aa)" % (index, item.identifier, item.length)
     lines.append(title)
     if item.record.description:
-        lines.append("    描述     : %s" % item.record.description)
+        lines.append("    Description : %s" % item.record.description)
     lines.append(
-        "    二级结构 : α-螺旋 %d (%.1f%%) | β-折叠 %d (%.1f%%) | coil/卷曲 %d (%.1f%%)"
+        "    SS         : α-helix %d (%.1f%%) | β-sheet %d (%.1f%%) | coil %d (%.1f%%)"
         % (
             counts["H"], fractions["H"] * 100,
             counts["E"], fractions["E"] * 100,
             counts["C"], fractions["C"] * 100,
         )
     )
-    lines.append("    区段     : %s" % _format_regions(item))
-    lines.append("    二硫键   : %s" % _format_disulfides(item))
+    lines.append("    Regions   : %s" % _format_regions(item))
+    lines.append("    Disulfide : %s" % _format_disulfides(item))
     if item.disulfides.free_cysteines:
         lines.append(
-            "    游离 Cys : %s"
+            "    Free Cys  : %s"
             % ", ".join("C%d" % position for position in item.disulfides.free_cysteines)
         )
-    lines.append("    盐桥候选 : %s" % _format_salt_bridges(item))
+    lines.append("    Salt bridge: %s" % _format_salt_bridges(item))
     lines.append(
-        "    序列     : %s"
+        "    Sequence  : %s"
         % " ".join(item.record.sequence[i:i + 10] for i in range(0, len(item.record.sequence), 10))
     )
     lines.append(
-        "    结构序列 : %s"
+        "    SS string : %s"
         % " ".join(item.ss[i:i + 10] for i in range(0, len(item.ss), 10))
     )
     return "\n".join(lines)
@@ -118,24 +118,24 @@ def _render_sequence_details(item: SequenceAnalysis, index: int) -> str:
 def _render_alignment(result: AnalysisResult) -> str:
     alignment = result.alignment
     if alignment is None:
-        return "（仅有一条序列，已跳过多序列比对）"
+        return "(Multiple-sequence alignment skipped: only one sequence)"
     identifiers = alignment.identifiers
     label_width = max(8, max(_width(identifier) for identifier in identifiers) + 2)
     lines = []
     for block_start in range(0, alignment.width, BLOCK_WIDTH):
         block_end = min(alignment.width, block_start + BLOCK_WIDTH)
         block_length = block_end - block_start
-        lines.append(_pad("位置", label_width) + _ruler(block_start, block_length))
+        lines.append(_pad("Position", label_width) + _ruler(block_start, block_length))
         for index, identifier in enumerate(identifiers):
             aligned = alignment.aligned[index][block_start:block_end]
             ss_line = align_secondary_structure(result.items[index].ss, alignment.aligned[index])
             lines.append(_pad(identifier, label_width) + aligned)
-            lines.append(_pad("结构", label_width) + ss_line[block_start:block_end])
-        lines.append(_pad("一致", label_width) + alignment.conservation[block_start:block_end])
-        lines.append(_pad("共识", label_width) + alignment.consensus[block_start:block_end])
+            lines.append(_pad("SS", label_width) + ss_line[block_start:block_end])
+        lines.append(_pad("Cons", label_width) + alignment.conservation[block_start:block_end])
+        lines.append(_pad("Consensus", label_width) + alignment.consensus[block_start:block_end])
         lines.append("")
-    identity_lines = ["序列两两一致度（%）:"]
-    headers = ["序列"] + identifiers
+    identity_lines = ["Pairwise sequence identity (%):"]
+    headers = ["Sequence"] + identifiers
     rows = []
     for index, identifier in enumerate(identifiers):
         rows.append([identifier] + ["%.1f" % value for value in alignment.identity[index]])
@@ -147,21 +147,21 @@ def _render_alignment(result: AnalysisResult) -> str:
 def _render_structure_contacts(result: AnalysisResult) -> str:
     structure = result.structure
     if structure is None:
-        return "未提供 PDB 结构文件，跳过结构级校验（--pdb 可启用）。"
-    lines = ["结构文件：%s" % structure.path]
-    lines.append("链：%s" % (", ".join(structure.chains) if structure.chains else "未解析到链信息"))
+        return "No PDB file supplied; structure-level validation skipped (enable with --pdb)."
+    lines = ["Structure file: %s" % structure.path]
+    lines.append("Chains: %s" % (", ".join(structure.chains) if structure.chains else "No chain information parsed"))
     if structure.disulfides:
-        lines.append("二硫键（SG-SG ≤ 2.5 Å）：")
+        lines.append("Disulfides (SG-SG ≤ 2.5 Å):")
         for bond in structure.disulfides:
             lines.append("    - %s" % bond)
     else:
-        lines.append("二硫键（SG-SG ≤ 2.5 Å）：未检出")
+        lines.append("Disulfides (SG-SG ≤ 2.5 Å): none detected")
     if structure.salt_bridges:
-        lines.append("盐桥（带电侧链原子 ≤ 4.0 Å）：")
+        lines.append("Salt bridges (charged side-chain atoms ≤ 4.0 Å):")
         for bridge in structure.salt_bridges:
             lines.append("    - %s" % bridge)
     else:
-        lines.append("盐桥（带电侧链原子 ≤ 4.0 Å）：未检出")
+        lines.append("Salt bridges (charged side-chain atoms ≤ 4.0 Å): none detected")
     return "\n".join(lines)
 
 
@@ -170,15 +170,15 @@ def render_text(result: AnalysisResult) -> str:
     thin = "-" * 78
     lines = [
         separator,
-        "protstruct 蛋白质二级结构比对报告",
+        "protstruct Protein Secondary-Structure Comparison Report",
         separator,
-        "输入文件 : %s" % result.source,
-        "序列条数 : %d 条（上限 %d）" % (result.count, result.config.max_sequences),
-        "二级结构 : GOR IV 信息论模型（H/E/C）",
-        "多序列比对: center-star + Needleman-Wunsch（BLOSUM62，仿射空位罚分）",
-        "结构校验 : %s" % ("PDB 结构：%s" % result.config.pdb_path if result.config.pdb_path else "未提供 PDB（二硫键/盐桥为序列层面预测）"),
+        "Input file : %s" % result.source,
+        "Sequences  : %d (limit %d)" % (result.count, result.config.max_sequences),
+        "SS method  : PSIPRED V4.1 (single-sequence, H/E/C)",
+        "Alignment  : center-star + Needleman-Wunsch (BLOSUM62, affine gaps)",
+        "Structure  : %s" % ("PDB: %s" % result.config.pdb_path if result.config.pdb_path else "No PDB (sequence-level disulfide/salt-bridge prediction)"),
         thin,
-        "一、序列概览",
+        "1. Sequence overview",
         thin,
     ]
     rows = []
@@ -198,47 +198,47 @@ def render_text(result: AnalysisResult) -> str:
         )
     lines.append(
         _table(
-            ["#", "序列ID", "长度", "α-螺旋", "β-折叠", "coil/卷曲", "Cys", "二硫键", "盐桥"],
+            ["#", "Sequence ID", "Length", "α-helix", "β-sheet", "Coil", "Cys", "Disulfides", "Salt bridges"],
             rows,
         )
     )
     lines.append("")
     lines.append(thin)
-    lines.append("二、逐序列结构特征")
+    lines.append("2. Per-sequence structural features")
     lines.append(thin)
     for index, item in enumerate(result.items, start=1):
         lines.append(_render_sequence_details(item, index))
         lines.append("")
     lines.append(thin)
-    lines.append("三、多序列比对（H=螺旋 E=折叠 C=coil/卷曲，* 完全一致 : 相似 . 含空位）")
+    lines.append("3. Multiple-sequence alignment (H=helix E=sheet C=coil; * identical : similar . gap)")
     lines.append(thin)
     lines.append(_render_alignment(result))
     lines.append("")
     lines.append(thin)
-    lines.append("四、PDB 结构校验")
+    lines.append("4. PDB structure validation")
     lines.append(thin)
     lines.append(_render_structure_contacts(result))
     lines.append("")
     lines.append(thin)
-    lines.append("说明：")
-    lines.append("  1. 二级结构为序列层面预测值，与实验解析结果可能存在差异。")
-    lines.append("  2. 二硫键配对与盐桥均为候选预测，需要三维结构或实验验证。")
-    lines.append("  3. 同一 FASTA 文件支持 1-20 条序列；序列间比对使用全局比对。")
+    lines.append("Notes:")
+    lines.append("  1. Secondary structures are sequence-level predictions and may differ from experimental structures.")
+    lines.append("  2. Disulfide pairings and salt bridges are candidates requiring 3D-structure or experimental validation.")
+    lines.append("  3. Each FASTA file supports 1-20 sequences; pairwise comparisons use global alignment.")
     lines.append(separator)
     return "\n".join(lines)
 
 
 def render_markdown(result: AnalysisResult) -> str:
-    lines = ["# protstruct 蛋白质二级结构比对报告", ""]
-    lines.append("- 输入文件：`%s`" % result.source)
-    lines.append("- 序列条数：%d 条（上限 %d）" % (result.count, result.config.max_sequences))
-    lines.append("- 二级结构：GOR IV 信息论模型（H/E/C）")
-    lines.append("- 多序列比对：center-star + Needleman-Wunsch（BLOSUM62）")
+    lines = ["# protstruct Protein Secondary-Structure Comparison Report", ""]
+    lines.append("- Input file: `%s`" % result.source)
+    lines.append("- Sequences: %d (limit %d)" % (result.count, result.config.max_sequences))
+    lines.append("- Secondary structure: PSIPRED V4.1 (single-sequence, H/E/C)")
+    lines.append("- Alignment: center-star + Needleman-Wunsch (BLOSUM62)")
     lines.append("")
-    lines.append("## 一、序列概览")
+    lines.append("## 1. Sequence overview")
     lines.append("")
     lines.append(_table(
-        ["#", "序列ID", "长度", "α-螺旋", "β-折叠", "coil/卷曲", "Cys", "二硫键", "盐桥"],
+        ["#", "Sequence ID", "Length", "α-helix", "β-sheet", "Coil", "Cys", "Disulfides", "Salt bridges"],
         [
             [
                 str(row["index"]), row["identifier"], str(row["length"]),
@@ -251,26 +251,26 @@ def render_markdown(result: AnalysisResult) -> str:
         ],
     ))
     lines.append("")
-    lines.append("## 二、逐序列结构特征")
+    lines.append("## 2. Per-sequence structural features")
     for index, item in enumerate(result.items, start=1):
         lines.append("")
-        lines.append("### %d. %s（%d aa）" % (index, item.identifier, item.length))
+        lines.append("### %d. %s (%d aa)" % (index, item.identifier, item.length))
         lines.append("")
         lines.append("```")
         lines.append(_render_sequence_details(item, index))
         lines.append("```")
     lines.append("")
-    lines.append("## 三、多序列比对")
+    lines.append("## 3. Multiple-sequence alignment")
     lines.append("")
     lines.append("```")
     lines.append(_render_alignment(result))
     lines.append("```")
     lines.append("")
-    lines.append("## 四、PDB 结构校验")
+    lines.append("## 4. PDB structure validation")
     lines.append("")
     lines.append(_render_structure_contacts(result))
     lines.append("")
-    lines.append("> 说明：二级结构、二硫键与盐桥均为序列层面的预测结果，需实验或三维结构验证。")
+    lines.append("> Note: secondary structures, disulfide pairings and salt bridges are sequence-level predictions requiring experimental or 3D-structure validation.")
     return "\n".join(lines)
 
 
@@ -320,7 +320,7 @@ def render_json(result: AnalysisResult) -> str:
     payload = {
         "source": result.source,
         "method": {
-            "secondary_structure": "GOR IV information theory",
+            "secondary_structure": "PSIPRED V4.1 neural network (single-sequence mode)",
             "alignment": "center-star + Needleman-Wunsch (BLOSUM62, affine gap)",
         },
         "config": {
@@ -401,7 +401,7 @@ def render(result: AnalysisResult, fmt: str = "text") -> str:
         return render_json(result)
     if normalized == "csv":
         return render_csv(result)
-    raise ValueError("不支持的输出格式: %s（可选 text/markdown/json/csv）" % fmt)
+    raise ValueError("Unsupported output format: %s (choose text/markdown/json/csv)" % fmt)
 
 
 def format_region_line(regions: Sequence) -> str:

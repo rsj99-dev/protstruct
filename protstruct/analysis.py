@@ -84,10 +84,10 @@ def analyze_records(
     """对已解析的序列记录执行完整分析。"""
     config = config or AnalysisConfig()
     if not records:
-        raise ValueError("至少需要一条序列。")
+        raise ValueError("At least one sequence is required.")
     if len(records) > config.max_sequences:
         raise ValueError(
-            "序列数量为 %d，超出上限 %d 条。" % (len(records), config.max_sequences)
+            "Sequence count %d exceeds the limit of %d." % (len(records), config.max_sequences)
         )
 
     items: List[SequenceAnalysis] = []

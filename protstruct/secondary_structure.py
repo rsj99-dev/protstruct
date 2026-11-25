@@ -1,9 +1,8 @@
-"""基于 GOR IV 的默认三态预测，并可切换到 GOR V（gor5_1）轻量模式。
+"""基于 PSIPRED V4.1（单序列模式）的 H/E/C 三态预测。
 
-默认模型为随包发布的 ``gor5_4_21.bin`` 与 ``gor5_3_21.bin``
-（Matrix6D + Matrix4D，21 残基窗口）；``engine="gor_v"`` 时使用
-``gor5_1cb513_W21.mod``（GOR V 的 GOR-I 基础模型，13 残基窗口）。
-两者均将 β-转角并入 coil/卷曲（C），因此输出为 H/E/C 三态。
+PSIPRED 的 ``seq2mtx`` 先生成单序列伪 PSSM，再由 ``psipred`` 和
+``psipass2`` 两级神经网络输出 H/E/C；β-转角并入 coil/卷曲（C）。
+完整 PSI-BLAST/UniRef90 profile 模式需要外部大型数据库，本包默认不启用。
 """
 
 from __future__ import annotations
@@ -11,10 +10,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Sequence
 
-from .gor_v import predict_gor_v
-from .gor_v_iv import predict_gor_iv
+from .psipred_engine import predict_psipred
 
-SS_NAMES = {"H": "α-螺旋", "E": "β-折叠", "C": "coil/卷曲（含β-转角）"}
+SS_NAMES = {"H": "α-helix", "E": "β-sheet", "C": "Coil (including β-turn)"}
 SS_ORDER = ("H", "E", "C")
 
 
@@ -100,23 +98,22 @@ def predict_secondary_structure(
     min_helix: int = 4,
     min_sheet: int = 3,
     min_turn: int = 3,
-    engine: str = "gor5_4",
+    engine: str = "psipred",
 ) -> SecondaryStructure:
     """预测单条序列的二级结构（H/E/C）。
 
-    默认 engine="gor5_4" 使用 GOR IV 的 gor5_4 + gor5_3 21 残基模型；
-    engine="gor_v" 使用轻量的 gor5_1 基础模型。
-    min_helix/min_sheet 仅用于过滤过短的螺旋/折叠区段；GOR IV 不输出
-    β-转角，min_turn 保留是为了兼容旧接口。
+    默认 engine="psipred" 使用 PSIPRED V4.1 单序列模式；
+    需要完整 PSI-BLAST profile 时，可将预计算的 mtx 传入 PSIPRED 命令行。
+    min_helix/min_sheet 用于过滤过短的螺旋/折叠区段，min_turn 保留兼容。
     """
     sequence = sequence.upper()
     if not sequence:
         return SecondaryStructure("", "", [])
 
-    if engine.lower() in ("gor_v", "gor5_1", "v"):
-        ss = predict_gor_v(sequence)
+    if engine.lower() in ("psipred", "psipred_single", "psipred_v4", "psipred4"):
+        ss = predict_psipred(sequence)
     else:
-        ss = predict_gor_iv(sequence)
+        raise ValueError("Unknown secondary-structure engine: %s (this build provides PSIPRED only)" % engine)
     chars = list(ss)
     # 脯氨酸在主链构象上不适合位于 α-螺旋内部
     for index, residue in enumerate(sequence):

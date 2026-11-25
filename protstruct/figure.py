@@ -29,20 +29,20 @@ def _plot_binary() -> str:
         if candidate.is_file():
             return str(candidate)
     raise RuntimeError(
-        "未找到 Rust SVG 绘图程序 protstruct-plot。请先构建：\n"
+        "Rust SVG plotter protstruct-plot was not found. Build it first:\n"
         "  cd software/rust/protstruct_plot && cargo build --release\n"
-        "或设置环境变量 PROTSTRUCT_PLOT_BIN。"
+        "or set PROTSTRUCT_PLOT_BIN."
     )
 
 
-def _run_plot(mode: str, output: str, data: Optional[str] = None) -> str:
+def _run_plot(mode: str, output: str, data: Optional[str] = None, lang: str = "en") -> str:
     path = Path(output)
     if path.suffix.lower() != ".svg":
-        raise ValueError("Rust SVG 后端只支持 .svg 输出，请使用 .svg 扩展名。")
+        raise ValueError("The Rust SVG backend only supports .svg output.")
     path.parent.mkdir(parents=True, exist_ok=True)
     input_path = None
     try:
-        command = [_plot_binary(), mode, "--output", str(path)]
+        command = [_plot_binary(), mode, "--output", str(path), "--lang", lang]
         if data is not None:
             with tempfile.NamedTemporaryFile("w", suffix=".tsv", delete=False, encoding="utf-8") as handle:
                 handle.write(data)
@@ -50,13 +50,13 @@ def _run_plot(mode: str, output: str, data: Optional[str] = None) -> str:
             command.extend(["--input", input_path])
         process = subprocess.run(command, check=True, capture_output=True, text=True, encoding="utf-8")
         if not path.is_file() or path.stat().st_size == 0:
-            raise RuntimeError("Rust SVG 绘图程序未生成文件：%s" % path)
+            raise RuntimeError("The Rust SVG plotter did not create a file: %s" % path)
         return str(path)
     except FileNotFoundError as exc:
-        raise RuntimeError("未找到 protstruct-plot，请先构建 Rust 绘图核心。") from exc
+        raise RuntimeError("protstruct-plot was not found; build the Rust plotting core first.") from exc
     except subprocess.CalledProcessError as exc:
         message = (exc.stderr or exc.stdout or "").strip()
-        raise RuntimeError("protstruct-plot 失败：%s" % message) from exc
+        raise RuntimeError("protstruct-plot failed: %s" % message) from exc
     finally:
         if input_path:
             try:
@@ -65,9 +65,9 @@ def _run_plot(mode: str, output: str, data: Optional[str] = None) -> str:
                 pass
 
 
-def plot_workflow(path: str) -> str:
-    """生成图 1（工作流）SVG。"""
-    return _run_plot("workflow", path)
+def plot_workflow(path: str, lang: str = "en") -> str:
+    """Generate the workflow SVG."""
+    return _run_plot("workflow", path, lang=lang)
 
 
 def _consistency_payload(result: AnalysisResult, report: ConsistencyReport) -> str:
@@ -97,13 +97,15 @@ def plot_consistency(
     path: str,
     dpi: int = 200,
     figure_scale: float = 1.0,
+    lang: str = "en",
 ) -> str:
-    """生成图 2（一致性图）SVG。
+    """Generate the consistency SVG.
 
-    dpi/figure_scale 保留用于兼容旧调用；SVG 为矢量输出，不需要 DPI。
+    dpi/figure_scale are retained for compatibility; SVG is vector output and
+    does not require DPI.
     """
     del dpi, figure_scale
-    return _run_plot("consistency", path, _consistency_payload(result, report))
+    return _run_plot("consistency", path, _consistency_payload(result, report), lang=lang)
 
 
 def _short_label(identifier: str) -> str:
@@ -128,14 +130,14 @@ def _mtba_payload(
     for label, item, score in zip(labels_paralog, paralog_result.items, paralog_report.scores):
         fractions = item.fractions()
         lines.append(
-            "PARA\t%s\t%.4f\t%.4f\t%.4f\t%.4f"
-            % (label, fractions["H"] * 100, fractions["E"] * 100, fractions["C"] * 100, score.total)
+            "PARA\t%s\t%.4f\t%.4f\t%.4f\t%.4f\t%.4f"
+            % (label, fractions["H"] * 100, fractions["E"] * 100, fractions["C"] * 100, score.total, score.score_rate)
         )
     for label, item, score in zip(labels_ortholog, ortholog_result.items, ortholog_report.scores):
         fractions = item.fractions()
         lines.append(
-            "ORTH\t%s\t%.4f\t%.4f\t%.4f\t%.4f"
-            % (label, fractions["H"] * 100, fractions["E"] * 100, fractions["C"] * 100, score.total)
+            "ORTH\t%s\t%.4f\t%.4f\t%.4f\t%.4f\t%.4f"
+            % (label, fractions["H"] * 100, fractions["E"] * 100, fractions["C"] * 100, score.total, score.score_rate)
         )
     return "\n".join(lines) + "\n"
 
@@ -146,10 +148,12 @@ def plot_mtba(
     path: str,
     paralog_labels: Optional[Sequence[str]] = None,
     ortholog_labels: Optional[Sequence[str]] = None,
+    lang: str = "en",
 ) -> str:
-    """生成合并后的图 3（A–D 四面板）SVG。"""
+    """Generate the combined composition-and-score SVG."""
     return _run_plot(
         "mtba",
         path,
         _mtba_payload(paralog_result, ortholog_result, paralog_labels, ortholog_labels),
+        lang=lang,
     )

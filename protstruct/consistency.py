@@ -134,7 +134,7 @@ def _column_agreement(aligned_ss: Sequence[str]) -> List[float]:
 def compute_consistency(result: AnalysisResult) -> ConsistencyReport:
     """计算每条序列相对第一条序列的二级结构一致性总分。"""
     if not result.items:
-        raise ValueError("没有可用于打分的序列。")
+        raise ValueError("No sequences are available for scoring.")
 
     aligned_sequences = _aligned_rows(result)
     reference_item = result.items[0]
@@ -199,19 +199,20 @@ def compute_consistency(result: AnalysisResult) -> ConsistencyReport:
 
 
 CSV_HEADERS = [
-    "序号",
-    "序列ID",
-    "总分",
-    "二级结构一致数",
-    "二级结构不一致数",
-    "二级结构一致率(%)",
-    "二硫键匹配数",
-    "盐桥匹配数",
-    "结构特征匹配数",
-    "可比残基数",
-    "序列长度",
-    "是否参考序列",
-    "参考满分",
+    "Index",
+    "Sequence ID",
+    "Total score",
+    "Score ratio (%)",
+    "SS matches",
+    "SS mismatches",
+    "SS identity (%)",
+    "Disulfide matches",
+    "Salt bridge matches",
+    "Feature matches",
+    "Compared residues",
+    "Sequence length",
+    "Reference",
+    "Reference maximum",
 ]
 
 
@@ -226,6 +227,7 @@ def render_consistency_csv(report: ConsistencyReport) -> str:
                 index,
                 score.identifier,
                 "%.2f" % score.total,
+                "%.1f" % score.score_rate,
                 score.ss_matches,
                 score.ss_mismatches,
                 "%.1f" % score.ss_rate,
@@ -234,7 +236,7 @@ def render_consistency_csv(report: ConsistencyReport) -> str:
                 score.feature_matches,
                 score.compared,
                 score.length,
-                "是" if score.is_reference else "否",
+                "Yes" if score.is_reference else "No",
                 "%.2f" % report.max_total,
             ]
         )
