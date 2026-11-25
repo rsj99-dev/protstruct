@@ -1,3 +1,14 @@
+<p align="center">
+  <img src="docs/logo.png" alt="protstruct logo" width="460">
+</p>
+
+<p align="center">
+  <img alt="version" src="https://img.shields.io/badge/version-v0.3.0-2563eb">
+  <img alt="python" src="https://img.shields.io/badge/python-3.8%2B-3776ab">
+  <img alt="license" src="https://img.shields.io/badge/license-MIT-22c55e">
+  <a href="https://github.com/rsj99-dev/protstruct"><img alt="GitHub" src="https://img.shields.io/badge/GitHub-rsj99--dev%2Fprotstruct-181717?logo=github"></a>
+</p>
+
 # protstruct PSIPRED edition
 
 `protstruct` is a lightweight protein secondary-structure and consistency-analysis toolkit. This edition uses **PSIPRED V4.1 in single-sequence mode** and combines secondary-structure prediction, disulfide pairing, salt-bridge candidates, multiple-sequence alignment, two-dimensional consistency scoring, and secondary-structure database search.
