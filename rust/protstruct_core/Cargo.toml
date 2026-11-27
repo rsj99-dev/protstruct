@@ -1,0 +1,12 @@
+[package]
+name = "protstruct-core"
+version = "0.4.0"
+edition = "2021"
+description = "Batch pairwise alignment and disulfide pairing core for protstruct"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+
+[profile.release]
+lto = true
+codegen-units = 1

@@ -1,4 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="547.2pt" height="158.4pt" viewBox="0 0 547.2 158.4">
-  <title>protstruct v0.3.0</title>
+  <title>protstruct v0.4.0</title>
   <image x="0" y="0" width="547.2" height="158.4" xlink:href="logo.png" href="logo.png"/>
+  <rect x="241" y="105.5" width="57" height="29" rx="13" fill="#f7fafc" stroke="#d7e0ea" stroke-width="1"/>
+  <text x="269.5" y="120" text-anchor="middle" dominant-baseline="middle" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#334155">v0.4.0</text>
 </svg>

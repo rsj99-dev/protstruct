@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Sequence
 
-from .psipred_engine import predict_psipred
+from .psipred_engine import predict_psipred, predict_psipred_batch
 
 SS_NAMES = {"H": "α-helix", "E": "β-sheet", "C": "Coil (including β-turn)"}
 SS_ORDER = ("H", "E", "C")
@@ -109,11 +109,20 @@ def predict_secondary_structure(
     sequence = sequence.upper()
     if not sequence:
         return SecondaryStructure("", "", [])
-
-    if engine.lower() in ("psipred", "psipred_single", "psipred_v4", "psipred4"):
-        ss = predict_psipred(sequence)
-    else:
+    if engine.lower() not in ("psipred", "psipred_single", "psipred_v4", "psipred4"):
         raise ValueError("Unknown secondary-structure engine: %s (this build provides PSIPRED only)" % engine)
+    return _postprocess_secondary_structure(sequence, predict_psipred(sequence), min_helix, min_sheet)
+
+
+def _postprocess_secondary_structure(
+    sequence: str,
+    ss: str,
+    min_helix: int = 4,
+    min_sheet: int = 3,
+) -> SecondaryStructure:
+    """对 Rust 原始 H/E/C 输出执行与单序列模式一致的后处理。"""
+    if not sequence:
+        return SecondaryStructure("", "", [])
     chars = list(ss)
     # 脯氨酸在主链构象上不适合位于 α-螺旋内部
     for index, residue in enumerate(sequence):
@@ -124,6 +133,22 @@ def predict_secondary_structure(
 
     ss = "".join(chars)
     return SecondaryStructure(sequence=sequence, ss=ss, regions=_regions_from_chars(chars))
+
+
+def predict_secondary_structure_batch(
+    sequences: Sequence[str],
+    min_helix: int = 4,
+    min_sheet: int = 3,
+) -> List[SecondaryStructure]:
+    """批量预测并后处理多条序列，Rust 权重只加载一次。"""
+    cleaned = [sequence.upper() for sequence in sequences]
+    if any(not sequence for sequence in cleaned):
+        raise ValueError("PSIPRED V4.1 requires non-empty sequences.")
+    states = predict_psipred_batch(cleaned)
+    return [
+        _postprocess_secondary_structure(sequence, state, min_helix, min_sheet)
+        for sequence, state in zip(cleaned, states)
+    ]
 
 
 def ss_counts(ss: str) -> Dict[str, int]:

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
+
+from .rust_core import align_pairs_rust
 
 _ORDER = "ARNDCQEGHILKMFPSTWYV"
 _ROWS = {
@@ -66,7 +68,7 @@ def _substitution(left: str, right: str) -> float:
     return float(BLOSUM62.get(left, {}).get(right, -1))
 
 
-def align_pair(first: str, second: str, gap_open: float = GAP_OPEN, gap_extend: float = GAP_EXTEND) -> Tuple[str, str, float]:
+def _align_pair_python(first: str, second: str, gap_open: float = GAP_OPEN, gap_extend: float = GAP_EXTEND) -> Tuple[str, str, float]:
     """Needleman-Wunsch 全局比对（Gotoh 仿射空位），返回两条带 gap 的序列与得分。"""
     rows, cols = len(first), len(second)
     negative = -1e9
@@ -153,22 +155,25 @@ def _kmer_profile(sequence: str, k: int = 2) -> Dict[str, int]:
     return profile
 
 
-def _kmer_similarity(first: str, second: str) -> float:
-    left = _kmer_profile(first)
-    right = _kmer_profile(second)
-    if not left or not right:
+def _profile_similarity(first: Dict[str, int], second: Dict[str, int]) -> float:
+    if not first or not second:
         return 0.0
-    dot = sum(count * right.get(kmer, 0) for kmer, count in left.items())
-    norm = (sum(value * value for value in left.values()) ** 0.5) * (
-        sum(value * value for value in right.values()) ** 0.5
+    dot = sum(count * second.get(kmer, 0) for kmer, count in first.items())
+    norm = (sum(value * value for value in first.values()) ** 0.5) * (
+        sum(value * value for value in second.values()) ** 0.5
     )
     return dot / norm if norm else 0.0
 
 
+def _kmer_similarity(first: str, second: str) -> float:
+    return _profile_similarity(_kmer_profile(first), _kmer_profile(second))
+
+
 def _choose_center(sequences: Sequence[str]) -> int:
+    profiles = [_kmer_profile(sequence) for sequence in sequences]
     best_index, best_score = 0, -1.0
-    for index, sequence in enumerate(sequences):
-        score = sum(_kmer_similarity(sequence, other) for other in sequences)
+    for index, profile in enumerate(profiles):
+        score = sum(_profile_similarity(profile, other) for other in profiles)
         if score > best_score:
             best_index, best_score = index, score
     return best_index
@@ -180,9 +185,28 @@ def _insert_column(rows: List[List[str]], index: int, value: str, target_row: in
         row.insert(index, value if row_index == target_row else "-")
 
 
-def _merge(rows: List[List[str]], center: str, new_sequence: str) -> None:
+def align_pair(
+    first: str,
+    second: str,
+    gap_open: float = GAP_OPEN,
+    gap_extend: float = GAP_EXTEND,
+    threads: int = 0,
+) -> Tuple[str, str, float]:
+    """两两全局比对，优先使用 Rust 批量核心。"""
+    results = align_pairs_rust([("", first, second)], gap_open, gap_extend, threads)
+    if results is not None:
+        return results[0]
+    return _align_pair_python(first, second, gap_open, gap_extend)
+
+
+def _merge(
+    rows: List[List[str]],
+    center: str,
+    new_sequence: str,
+    aligned_pair: Optional[Tuple[str, str, float]] = None,
+) -> None:
     """把一条新序列并入以 center 为基准的比对（rows[0] 始终是 center）。"""
-    gapped_center, gapped_new, _ = align_pair(center, new_sequence)
+    gapped_center, gapped_new, _ = aligned_pair or _align_pair_python(center, new_sequence)
     center_columns = [index for index, char in enumerate(rows[0]) if char != "-"]
     width = len(rows[0])
     new_row: List[str] = ["-"] * width
@@ -258,7 +282,11 @@ def _identity_matrix(aligned: Sequence[str]) -> List[List[float]]:
     return matrix
 
 
-def build_alignment(identifiers: Sequence[str], sequences: Sequence[str]) -> AlignmentResult:
+def build_alignment(
+    identifiers: Sequence[str],
+    sequences: Sequence[str],
+    threads: int = 0,
+) -> AlignmentResult:
     """以最相似序列为中心进行 center-star 渐进比对。"""
     if not sequences:
         raise ValueError("At least one sequence is required for alignment.")
@@ -275,11 +303,14 @@ def build_alignment(identifiers: Sequence[str], sequences: Sequence[str]) -> Ali
 
     center_index = _choose_center(sequences)
     center = sequences[center_index]
+    pair_indices = [index for index in range(len(sequences)) if index != center_index]
+    rust_results = align_pairs_rust([
+        (str(index), center, sequences[index]) for index in pair_indices
+    ], threads=threads)
+    rust_by_index = dict(zip(pair_indices, rust_results)) if rust_results is not None else {}
     rows: List[List[str]] = [list(center)]
-    for index, sequence in enumerate(sequences):
-        if index == center_index:
-            continue
-        _merge(rows, center, sequence)
+    for index in pair_indices:
+        _merge(rows, center, sequences[index], rust_by_index.get(index))
 
     # rows 的物理顺序为 [center, 其他按输入顺序]，渲染时需要还原输入顺序
     order = [center_index] + [index for index in range(len(sequences)) if index != center_index]

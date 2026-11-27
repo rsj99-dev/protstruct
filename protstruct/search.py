@@ -26,7 +26,9 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from .fasta import SequenceRecord, read_fasta
-from .secondary_structure import predict_secondary_structure
+from .psipred_engine import WEIGHTS_DIR
+from .rust_core import MAX_THREADS, effective_threads
+from .secondary_structure import predict_secondary_structure, predict_secondary_structure_batch
 
 
 @dataclass
@@ -164,8 +166,7 @@ def _rust_score(
             handle.write("%s\t%s\t%s\n" % (identifier, ss, sequence))
     try:
         env = dict(os.environ)
-        if config.threads and config.threads > 0:
-            env["RAYON_NUM_THREADS"] = str(config.threads)
+        env["RAYON_NUM_THREADS"] = str(effective_threads(config.threads))
         process = subprocess.run(
             [binary, "--input", path, "--top", str(len(candidates))],
             check=True,
@@ -216,6 +217,80 @@ def _save_cache(path: Optional[str], cache: Dict[str, Dict[str, str]]) -> None:
         pass
 
 
+def _full_rust_search(
+    query: SequenceRecord,
+    database: Sequence[SequenceRecord],
+    config: SearchConfig,
+) -> Optional[List[SearchHit]]:
+    """调用 Rust 完成预测、预筛、比对、过滤和排序。"""
+    binary = _rust_binary()
+    if not binary:
+        return None
+    query_path = database_path = None
+    try:
+        with tempfile.NamedTemporaryFile("w", suffix=".fasta", delete=False, encoding="utf-8") as handle:
+            query_path = handle.name
+            handle.write(">%s\n%s\n" % (query.identifier, query.sequence))
+        with tempfile.NamedTemporaryFile("w", suffix=".fasta", delete=False, encoding="utf-8") as handle:
+            database_path = handle.name
+            for record in database:
+                handle.write(">%s %s\n%s\n" % (record.identifier, record.description, record.sequence))
+        env = dict(os.environ)
+        env["RAYON_NUM_THREADS"] = str(effective_threads(config.threads))
+        process = subprocess.run(
+            [
+                binary, "--query", query_path, "--database", database_path,
+                "--data", str(WEIGHTS_DIR), "--top", str(config.top_n),
+                "--prefilter", str(config.prefilter), "--kmer", str(config.kmer),
+                "--min-ss-identity", str(config.min_ss_identity),
+                "--min-coverage", str(config.min_coverage),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            env=env,
+        )
+        lines = process.stdout.splitlines()
+        if not lines:
+            return None
+        header = lines[0].split("\t")
+        required = {
+            "identifier", "total_score", "ss_score", "ss_identity", "coverage",
+            "seq_similarity", "length", "description", "matches", "aligned_length",
+        }
+        if not required.issubset(header):
+            return None
+        hits: List[SearchHit] = []
+        for line in lines[1:]:
+            fields = line.split("\t")
+            if len(fields) != len(header):
+                return None
+            row = dict(zip(header, fields))
+            hits.append(SearchHit(
+                identifier=row["identifier"],
+                description=row["description"],
+                length=int(row["length"]),
+                ss_score=int(row["ss_score"]),
+                matches=int(row["matches"]),
+                aligned_length=int(row["aligned_length"]),
+                coverage=float(row["coverage"]),
+                ss_identity=float(row["ss_identity"]),
+                sequence_similarity=float(row["seq_similarity"]),
+                total_score=float(row["total_score"]),
+            ))
+        return hits
+    except (OSError, subprocess.SubprocessError, ValueError, KeyError):
+        return None
+    finally:
+        for path in (query_path, database_path):
+            if path:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+
+
 def search_database(
     query: SequenceRecord,
     database: Sequence[SequenceRecord],
@@ -223,21 +298,33 @@ def search_database(
 ) -> List[SearchHit]:
     """在数据库中检索二级结构相似的序列。"""
     config = config or SearchConfig()
+    if config.threads < 0 or config.threads > MAX_THREADS:
+        raise ValueError("Thread count must be between 0 and %d." % MAX_THREADS)
     if not database:
         return []
+    if config.use_rust and config.cache_path is None:
+        rust_hits = _full_rust_search(query, database, config)
+        if rust_hits is not None:
+            return rust_hits
 
     query_ss = predict_secondary_structure(query.sequence).ss
     query_seq_set = _kmer_set(query.sequence, config.kmer)
     query_ss_set = _kmer_set(query_ss, config.kmer)
 
     cache = _load_cache(config.cache_path)
+    missing = [
+        record for record in database
+        if not (cache.get(record.identifier) and cache[record.identifier].get("sequence") == record.sequence)
+    ]
+    predicted = predict_secondary_structure_batch([record.sequence for record in missing])
+    predicted_by_id = {record.identifier: secondary.ss for record, secondary in zip(missing, predicted)}
     entries = []
     for record in database:
         cached = cache.get(record.identifier)
         if cached and cached.get("sequence") == record.sequence:
             ss = cached.get("ss", "")
         else:
-            ss = predict_secondary_structure(record.sequence).ss
+            ss = predicted_by_id[record.identifier]
             cache[record.identifier] = {"sequence": record.sequence, "ss": ss}
         seq_similarity = _jaccard(query_seq_set, _kmer_set(record.sequence, config.kmer))
         ss_similarity = _jaccard(query_ss_set, _kmer_set(ss, config.kmer))
@@ -302,13 +389,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("database", help="Database FASTA (no sequence-count limit)")
     parser.add_argument("--top", type=int, default=20, help="Number of hits to report (default: 20)")
     parser.add_argument("--prefilter", type=int, default=2000, help="Number of k-mer prefilter candidates (default: 2000)")
-    parser.add_argument("--threads", type=int, default=0, help="Rust thread count; 0 uses all CPUs")
+    parser.add_argument("--threads", type=int, default=0, help="Rust thread count (0 = auto, max 64)")
     parser.add_argument("--min-ss-identity", type=float, default=0.0, help="Minimum SS identity")
     parser.add_argument("--min-coverage", type=float, default=0.0, help="Minimum query coverage")
     parser.add_argument("--cache", help="Optional SS cache JSON path")
     parser.add_argument("--output", "-o", help="Write TSV to a file (default: stdout)")
     parser.add_argument("--no-rust", action="store_true", help="Force the Python fallback")
     args = parser.parse_args(argv)
+    if args.threads < 0 or args.threads > MAX_THREADS:
+        print("Error: --threads must be between 0 and %d." % MAX_THREADS, file=sys.stderr)
+        return 2
 
     try:
         query_records = read_fasta(args.query, max_sequences=None)

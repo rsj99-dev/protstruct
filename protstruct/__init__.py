@@ -1,7 +1,7 @@
 """protstruct —— 蛋白质二级结构与结构特征识别工具包。
 
 功能概览：
-    * 读取 FASTA（1-20 条序列）；
+    * 读取 FASTA（序列数量不限）；
     * PSIPRED V4.1 单序列模式预测 α-螺旋、β-折叠与 coil/卷曲（H/E/C）；
     * 预测二硫键配对与游离半胱氨酸；
     * 预测盐桥候选（可选读取 PDB 结构验证真实盐桥）；
@@ -38,7 +38,7 @@ def __getattr__(name):
         return getattr(search_module, name)
     raise AttributeError("module %r has no attribute %r" % (__name__, name))
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
     "AnalysisConfig",

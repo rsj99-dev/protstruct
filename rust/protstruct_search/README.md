@@ -1,9 +1,11 @@
 # protstruct Rust search core
 
-Parallel secondary-structure Smith-Waterman scorer used by:
+Full Rust secondary-structure search pipeline used by:
 
 ```powershell
 protstruct-search query.fa database.fa --top 20
+# Direct Rust invocation
+rust/protstruct_search/target/release/protstruct-search --query query.fa --database database.fa --data third_party/psipred/data --top 20
 ```
 
 ## Build
@@ -31,6 +33,10 @@ $env:PROTSTRUCT_SEARCH_BIN = "D:\path\to\protstruct-search.exe"
 
 If the binary is absent, `protstruct-search` uses the pure-Python fallback.
 
-The Rust core receives a pre-filtered TSV from Python and performs the
-secondary-structure local alignment in parallel with Rayon. Sequence k-mer
-Jaccard similarity is computed in Rust for tie-breaking.
+In full mode, Rust reads the query and database FASTA files, performs batch
+PSIPRED prediction with weights loaded once, applies sequence/SS k-mer
+prefiltering, and runs parallel Smith-Waterman scoring with Rayon. Filtering
+and final ranking are also performed in Rust.
+
+The legacy `--input` mode still accepts a pre-scored TSV from Python. If the
+binary is unavailable, Python uses its equivalent pure-Python pipeline.

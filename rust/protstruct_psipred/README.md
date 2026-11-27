@@ -29,6 +29,13 @@ Linux/macOS users can build from this source.
 protstruct-psipred --data ../../third_party/psipred/data --sequence ACDEFGHIKL
 ```
 
+Batch FASTA inference loads the weights once and is also reused by the Rust
+database-search core:
+
+```powershell
+protstruct-psipred --data ../../third_party/psipred/data --input ../../examples/demo.fasta --output predicted.fa
+```
+
 The Python package calls this binary through `protstruct.psipred_engine`.
 The implementation is validated against the original PSIPRED V4.1 C
 output for the demo and MtbA datasets (identical residue states).

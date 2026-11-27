@@ -10,6 +10,7 @@ from typing import Sequence
 
 from .analysis import AnalysisResult, SequenceAnalysis, summarize
 from .alignment import align_secondary_structure
+from .rust_core import effective_threads
 from .secondary_structure import SS_NAMES, SS_ORDER
 
 BLOCK_WIDTH = 60
@@ -173,7 +174,12 @@ def render_text(result: AnalysisResult) -> str:
         "protstruct Protein Secondary-Structure Comparison Report",
         separator,
         "Input file : %s" % result.source,
-        "Sequences  : %d (limit %d)" % (result.count, result.config.max_sequences),
+        "Sequences  : %d" % result.count,
+        "Threads    : %s" % (
+            "auto (%d active)" % effective_threads()
+            if result.config.threads == 0
+            else "%d configured (%d active)" % (result.config.threads, effective_threads(result.config.threads))
+        ),
         "SS method  : PSIPRED V4.1 (single-sequence, H/E/C)",
         "Alignment  : center-star + Needleman-Wunsch (BLOSUM62, affine gaps)",
         "Structure  : %s" % ("PDB: %s" % result.config.pdb_path if result.config.pdb_path else "No PDB (sequence-level disulfide/salt-bridge prediction)"),
@@ -223,7 +229,7 @@ def render_text(result: AnalysisResult) -> str:
     lines.append("Notes:")
     lines.append("  1. Secondary structures are sequence-level predictions and may differ from experimental structures.")
     lines.append("  2. Disulfide pairings and salt bridges are candidates requiring 3D-structure or experimental validation.")
-    lines.append("  3. Each FASTA file supports 1-20 sequences; pairwise comparisons use global alignment.")
+    lines.append("  3. FASTA sequence count is unlimited; pairwise comparisons use global alignment.")
     lines.append(separator)
     return "\n".join(lines)
 
@@ -231,7 +237,12 @@ def render_text(result: AnalysisResult) -> str:
 def render_markdown(result: AnalysisResult) -> str:
     lines = ["# protstruct Protein Secondary-Structure Comparison Report", ""]
     lines.append("- Input file: `%s`" % result.source)
-    lines.append("- Sequences: %d (limit %d)" % (result.count, result.config.max_sequences))
+    lines.append("- Sequences: %d" % result.count)
+    lines.append("- Threads: %s" % (
+        "auto (%d active)" % effective_threads()
+        if result.config.threads == 0
+        else "%d configured (%d active)" % (result.config.threads, effective_threads(result.config.threads))
+    ))
     lines.append("- Secondary structure: PSIPRED V4.1 (single-sequence, H/E/C)")
     lines.append("- Alignment: center-star + Needleman-Wunsch (BLOSUM62)")
     lines.append("")
@@ -324,13 +335,14 @@ def render_json(result: AnalysisResult) -> str:
             "alignment": "center-star + Needleman-Wunsch (BLOSUM62, affine gap)",
         },
         "config": {
-            "max_sequences": result.config.max_sequences,
+            "max_sequences": None,
             "min_helix": result.config.min_helix,
             "min_sheet": result.config.min_sheet,
             "min_turn": result.config.min_turn,
             "min_disulfide_separation": result.config.min_disulfide_separation,
             "salt_bridge_window": result.config.salt_bridge_window,
             "salt_bridge_min_separation": result.config.salt_bridge_min_separation,
+            "threads": result.config.threads,
             "pdb_path": result.config.pdb_path,
         },
         "sequences": [_sequence_dict(item) for item in result.items],

@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 STANDARD_RESIDUES = "ACDEFGHIKLMNPQRSTVWY"
-MAX_SEQUENCES = 20
 
 # 显式支持的 FASTA 扩展名（大小写不敏感）
 SUPPORTED_EXTENSIONS = (".fa", ".faa", ".fasta")
@@ -66,11 +65,11 @@ def is_supported_fasta(path: str) -> bool:
     return os.path.splitext(path)[1].lower() in SUPPORTED_EXTENSIONS
 
 
-def parse_fasta_text(text: str, max_sequences: Optional[int] = MAX_SEQUENCES) -> List[SequenceRecord]:
+def parse_fasta_text(text: str, max_sequences: Optional[int] = None) -> List[SequenceRecord]:
     """解析 FASTA 文本，返回记录列表。
 
     `;` 与 `#` 开头的行视为注释；序列可跨多行；标题行第一个词作为 ID，
-    其余作为描述。max_sequences=None 时不限制序列数（用于数据库检索）。
+    其余作为描述。默认不限制序列数；调用方可显式传入 max_sequences。
     """
     text = text.lstrip("\ufeff")
     records: List[SequenceRecord] = []
@@ -119,7 +118,7 @@ def parse_fasta_text(text: str, max_sequences: Optional[int] = MAX_SEQUENCES) ->
     return records
 
 
-def read_fasta(path: str, max_sequences: Optional[int] = MAX_SEQUENCES) -> List[SequenceRecord]:
+def read_fasta(path: str, max_sequences: Optional[int] = None) -> List[SequenceRecord]:
     """读取 FASTA 文件（.fa/.faa/.fasta）。
 
     自动处理 UTF-8（含 BOM）、UTF-16 与 GBK 编码；扩展名不匹配时仍会

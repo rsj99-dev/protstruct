@@ -12,16 +12,18 @@ use std::fmt::Write as FmtWrite;
 use std::fs;
 use std::process;
 
-const FONT: &str = "Times New Roman, SimSun, Songti SC, Noto Serif CJK SC, serif";
-const INK: &str = "#334155";
-const SLATE: &str = "#5878A6";
-const BLUE: &str = "#A7C7E7";
-const PINK: &str = "#F4A7AE";
-const PALE: &str = "#CFEAF6";
-const PEACH: &str = "#FBD9C9";
-const MINT: &str = "#A6D0C6";
-const GRAY: &str = "#DADDE3";
-const BG: &str = "#F7FAFC";
+const FONT: &str = "Arial, Noto Sans CJK SC, Microsoft YaHei, SimSun, sans-serif";
+// 论文统一色系：冰川蓝绿。
+const INK: &str = "#315C6B";
+const SLATE: &str = "#538A95";
+const BLUE: &str = "#8CB9BB";
+const PINK: &str = "#538A95";
+const PALE: &str = "#C9DEDA";
+const PEACH: &str = "#A5BCC7";
+const MINT: &str = "#C9DEDA";
+const GRAY: &str = "#E5DDC8";
+const BG: &str = "#FFFFFF";
+const GRID: &str = "#C9DEDA";
 
 #[derive(Default, Clone)]
 struct Row {
@@ -63,6 +65,7 @@ fn escape(text: &str) -> String {
 }
 
 fn text(out: &mut String, x: f64, y: f64, size: f64, anchor: &str, fill: &str, weight: &str, value: &str) {
+    let size = size * 1.8;
     let _ = write!(
         out,
         "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"{}\" font-size=\"{:.1}\" text-anchor=\"{}\" fill=\"{}\" font-weight=\"{}\">{}</text>\n",
@@ -71,6 +74,7 @@ fn text(out: &mut String, x: f64, y: f64, size: f64, anchor: &str, fill: &str, w
 }
 
 fn text_rot(out: &mut String, x: f64, y: f64, size: f64, anchor: &str, fill: &str, value: &str, angle: f64) {
+    let size = size * 1.8;
     let _ = write!(
         out,
         "<text x=\"{:.1}\" y=\"{:.1}\" transform=\"rotate({:.1} {:.1} {:.1})\" font-family=\"{}\" font-size=\"{:.1}\" text-anchor=\"{}\" fill=\"{}\">{}</text>\n",
@@ -178,42 +182,56 @@ fn parse_consistency(path: &str) -> Result<Consistency, String> {
 fn consistency_svg(data: &Consistency, lang: &str) -> String {
     let rows = data.rows.len().max(1);
     let width = data.width.max(1);
-    let height = 360.0 + rows as f64 * 58.0;
-    let left = 170.0;
-    let map_w = 1080.0;
-    let map_y = 210.0;
-    let row_h = 58.0;
+    let left = 230.0;
+    let map_w = 1320.0;
+    let row_h = 46.0;
+    let map_y = 190.0;
     let map_h = rows as f64 * row_h;
-    let score_x = left + map_w + 35.0;
-    let score_w = 215.0;
+    let score_y = map_y + map_h + 75.0;
+    let score_row_h = 30.0;
+    let score_h = rows as f64 * score_row_h;
+    let legend_y = score_y + score_h + 55.0;
+    let height = legend_y + 45.0;
     let cell = map_w / width as f64;
     let mut svg = String::new();
     let _ = writeln!(
         svg,
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1600\" height=\"{:.0}\" viewBox=\"0 0 1600 {:.0}\" shape-rendering=\"crispEdges\">",
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1800\" height=\"{:.0}\" viewBox=\"0 0 1800 {:.0}\">",
         height, height
     );
-    rect(&mut svg, 0.0, 0.0, 1600.0, height, "#FFFFFF", "#FFFFFF", 0.0, 0.0);
-    let title = if lang == "zh" {
-        format!("多序列二级结构一致性图（参考序列：{}）", data.reference)
-    } else {
-        format!("Multi-sequence secondary-structure consistency (reference: {})", data.reference)
-    };
-    text(&mut svg, 800.0, 30.0, 24.0, "middle", INK, "bold", &title);
-    text(&mut svg, 800.0, 56.0, 13.0, "middle", SLATE, "normal", tr(lang, "逐列比较：二级结构相同 +1，不同 0；二硫键/盐桥对应 +0.5；参考序列为第一条序列", "Column comparison: SS match +1, mismatch 0; feature-pair match +0.5; first sequence is the reference"));
+    rect(&mut svg, 0.0, 0.0, 1800.0, height, "#FFFFFF", "#FFFFFF", 0.0, 0.0);
 
-    // Agreement panel.
-    let agreement_y = 82.0;
-    let agreement_h = 88.0;
-    line(&mut svg, left, agreement_y + agreement_h, left + map_w, agreement_y + agreement_h, BLUE, 1.0);
-    for (index, value) in data.agreement.iter().take(width).enumerate() {
-        let h = value.clamp(0.0, 1.0) * agreement_h;
-        rect(&mut svg, left + index as f64 * cell - 0.15, agreement_y + agreement_h - h, cell + 0.3, h, BLUE, BLUE, 0.0, 0.0);
+    // A. Column agreement as a restrained area plot.
+    let agreement_y = 70.0;
+    let agreement_h = 62.0;
+    text(&mut svg, 60.0, agreement_y + 4.0, 16.0, "start", INK, "bold", "A");
+    line(&mut svg, left, agreement_y, left + map_w, agreement_y, GRID, 0.8);
+    line(&mut svg, left, agreement_y + agreement_h / 2.0, left + map_w, agreement_y + agreement_h / 2.0, GRID, 0.8);
+    line(&mut svg, left, agreement_y + agreement_h, left + map_w, agreement_y + agreement_h, GRID, 0.8);
+    text(&mut svg, left - 12.0, agreement_y + 4.0, 11.0, "end", SLATE, "normal", "1.0");
+    text(&mut svg, left - 12.0, agreement_y + agreement_h / 2.0 + 4.0, 11.0, "end", SLATE, "normal", "0.5");
+    text(&mut svg, left - 12.0, agreement_y + agreement_h + 4.0, 11.0, "end", SLATE, "normal", "0.0");
+    if !data.agreement.is_empty() {
+        let mut area = String::new();
+        let _ = write!(area, "M {:.1} {:.1} ", left, agreement_y + agreement_h);
+        for (index, value) in data.agreement.iter().take(width).enumerate() {
+            let x = left + (index as f64 + 0.5) * cell;
+            let y = agreement_y + agreement_h * (1.0 - value.clamp(0.0, 1.0));
+            let _ = write!(area, "L {:.1} {:.1} ", x, y);
+        }
+        let _ = write!(area, "L {:.1} {:.1} Z", left + map_w, agreement_y + agreement_h);
+        let _ = write!(svg, "<path d=\"{}\" fill=\"{}\" fill-opacity=\"0.55\"/>\n", area, PALE);
+        let mut points = String::new();
+        for (index, value) in data.agreement.iter().take(width).enumerate() {
+            let x = left + (index as f64 + 0.5) * cell;
+            let y = agreement_y + agreement_h * (1.0 - value.clamp(0.0, 1.0));
+            let _ = write!(points, "{:.1},{:.1} ", x, y);
+        }
+        let _ = write!(svg, "<polyline points=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"1.6\" stroke-linejoin=\"round\"/>\n", points, SLATE);
     }
-    text(&mut svg, left - 12.0, agreement_y + 8.0, 12.0, "end", INK, "normal", "100%");
-    text(&mut svg, left - 12.0, agreement_y + agreement_h * 0.55, 12.0, "end", INK, "normal", "50%");
-    text(&mut svg, left - 12.0, agreement_y + agreement_h, 12.0, "end", INK, "normal", "0%");
-    text_rot(&mut svg, left - 48.0, agreement_y + agreement_h * 0.55, 12.0, "middle", INK, tr(lang, "逐列一致性", "Column agreement"), -90.0);
+
+    // B. Secondary-structure alignment heatmap.
+    text(&mut svg, 60.0, map_y - 18.0, 16.0, "start", INK, "bold", "B");
 
     // Heatmap.
     for row_index in 0..rows {
@@ -274,37 +292,44 @@ fn consistency_svg(data: &Consistency, lang: &str) -> String {
     }
     text(&mut svg, left + map_w / 2.0, map_y + map_h + 42.0, 12.0, "middle", INK, "normal", tr(lang, "比对位置（列）", "Aligned position (column)"));
 
-    // Score panel.
+    // C. Horizontal score bars with direct labels.
+    text(&mut svg, 60.0, score_y - 28.0, 16.0, "start", INK, "bold", "C");
     let score_max = data.max_total.max(1.0);
-    line(&mut svg, score_x, map_y + map_h, score_x + score_w, map_y + map_h, SLATE, 1.0);
-    line(&mut svg, score_x, map_y, score_x, map_y + map_h, SLATE, 1.0);
+    let bar_x = left + 210.0;
+    let bar_w = 980.0;
     for row_index in 0..rows {
-        let bar_w = (data.rows[row_index].total / score_max).clamp(0.0, 1.0) * score_w;
+        let y = score_y + row_index as f64 * score_row_h;
+        let label = if data.rows[row_index].reference {
+            if lang == "en" { format!("{}  (reference)", data.rows[row_index].id) } else { format!("{}（参考）", data.rows[row_index].id) }
+        } else {
+            data.rows[row_index].id.clone()
+        };
+        text(&mut svg, left, y + 19.0, 12.0, "end", INK, "normal", &label);
+        rect(&mut svg, bar_x, y + 5.0, bar_w, 15.0, PALE, PALE, 0.0, 0.0);
+        let value_w = (data.rows[row_index].total / score_max).clamp(0.0, 1.0) * bar_w;
         let color = if data.rows[row_index].reference { SLATE } else { BLUE };
-        rect(&mut svg, score_x, map_y + row_index as f64 * row_h + 12.0, bar_w, row_h - 24.0, color, color, 0.0, 0.0);
-        text(&mut svg, score_x + bar_w + 7.0, map_y + (row_index as f64 + 0.5) * row_h + 4.0, 11.0, "start", INK, "normal", &format!("{:.1} ({:.1}%)", data.rows[row_index].total, data.rows[row_index].total / score_max * 100.0));
+        rect(&mut svg, bar_x, y + 5.0, value_w, 15.0, color, color, 0.0, 0.0);
+        text(&mut svg, bar_x + bar_w + 16.0, y + 18.0, 12.0, "start", INK, "normal", &format!("{:.1}  ({:.1}%)", data.rows[row_index].total, data.rows[row_index].total / score_max * 100.0));
     }
-    text(&mut svg, score_x + score_w / 2.0, map_y + map_h + 42.0, 12.0, "middle", INK, "normal", tr(lang, "总分 / 总分一致率", "Total / score ratio"));
 
     // Legend.
-    let legend_y = map_y + map_h + 78.0;
     let legend = [
-        (PINK, tr(lang, "α-螺旋 (H)", "α-helix (H)"), "rect"),
-        (BLUE, tr(lang, "β-折叠 (E)", "β-sheet (E)"), "rect"),
-        (GRAY, tr(lang, "coil/卷曲 (C)", "Coil (C)"), "rect"),
-        (SLATE, tr(lang, "二硫键残基", "Disulfide"), "circle"),
-        (PEACH, tr(lang, "盐桥残基", "Salt bridge"), "square"),
+        (PINK, tr(lang, "α-螺旋 H", "α-helix H"), "rect"),
+        (BLUE, tr(lang, "β-折叠 E", "β-sheet E"), "rect"),
+        (GRAY, tr(lang, "coil C", "Coil C"), "rect"),
+        (SLATE, tr(lang, "二硫键", "Disulfide"), "circle"),
+        (PEACH, tr(lang, "盐桥", "Salt bridge"), "square"),
     ];
-    let mut x = 310.0;
+    let mut x = 430.0;
     for (color, label, kind) in legend {
         if kind == "circle" {
             let _ = write!(svg, "<circle cx=\"{:.1}\" cy=\"{:.1}\" r=\"4\" fill=\"{}\"/>\n", x, legend_y, color);
         } else if kind == "square" {
-            let _ = write!(svg, "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"8\" height=\"8\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>\n", x - 4.0, legend_y - 4.0, color, SLATE);
+            let _ = write!(svg, "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"8\" height=\"8\" fill=\"{}\" stroke=\"{}\" stroke-width=\"0.8\"/>\n", x - 4.0, legend_y - 4.0, color, SLATE);
         } else {
             rect(&mut svg, x - 6.0, legend_y - 6.0, 12.0, 12.0, color, "#FFFFFF", 0.5, 0.0);
         }
-        text(&mut svg, x + 12.0, legend_y + 4.0, 13.0, "start", INK, "normal", label);
+        text(&mut svg, x + 12.0, legend_y + 4.0, 12.0, "start", INK, "normal", label);
         x += 205.0;
     }
     svg.push_str("</svg>\n");
@@ -479,10 +504,10 @@ fn workflow_svg(lang: &str) -> String {
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1800\" height=\"800\" viewBox=\"0 0 1800 800\">"
     );
     rect(&mut svg, 0.0, 0.0, 1800.0, 800.0, "#FFFFFF", "#FFFFFF", 0.0, 0.0);
-    svg.push_str(r##"<defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#94A3B8"/></marker></defs>"##);
+    svg.push_str(r##"<defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#A5BCC7"/></marker></defs>"##);
     text(&mut svg, 900.0, 58.0, 22.0, "middle", INK, "bold", tr(lang, "protstruct–PSIPRED 工作流", "protstruct–PSIPRED workflow"));
 
-    workflow_node(&mut svg, 70.0, 220.0, 250.0, 180.0, "FASTA input", &["1–20 sequences", ".fa / .faa / .fasta"], PALE);
+    workflow_node(&mut svg, 70.0, 220.0, 250.0, 180.0, "FASTA input", &["Unlimited sequences", ".fa / .faa / .fasta"], PALE);
     workflow_node(&mut svg, 390.0, 220.0, 270.0, 180.0, "PSIPRED V4.1", &["Rust inference", "H / E / C"], PINK);
     workflow_node(&mut svg, 710.0, 220.0, 370.0, 180.0, "Feature + alignment", &["Disulfide · salt bridge", "MSA · optional PDB"], MINT);
     workflow_node(&mut svg, 1150.0, 220.0, 250.0, 180.0, "2D scoring", &["SS +1 / mismatch 0", "Feature pair +0.5"], PEACH);
@@ -495,7 +520,7 @@ fn workflow_svg(lang: &str) -> String {
 
     let _ = write!(
         svg,
-        "<path d=\"M525 402 L525 520 Q525 548 553 548 L820 548\" fill=\"none\" stroke=\"#94A3B8\" stroke-width=\"1.5\" stroke-dasharray=\"5 5\" marker-end=\"url(#arrow)\"/>\n"
+        "<path d=\"M525 402 L525 520 Q525 548 553 548 L820 548\" fill=\"none\" stroke=\"#A5BCC7\" stroke-width=\"1.5\" stroke-dasharray=\"5 5\" marker-end=\"url(#arrow)\"/>\n"
     );
     let _ = write!(
         svg,

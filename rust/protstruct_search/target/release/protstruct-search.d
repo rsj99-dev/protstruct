@@ -1,0 +1,1 @@
+d:\2级结构比对软件\psipred_version\software\rust\protstruct_search\target\release\protstruct-search.exe: D:\2级结构比对软件\psipred_version\software\rust\protstruct_psipred\src\blosum.rs D:\2级结构比对软件\psipred_version\software\rust\protstruct_psipred\src\lib.rs d:\2级结构比对软件\psipred_version\software\rust\protstruct_search\src\main.rs

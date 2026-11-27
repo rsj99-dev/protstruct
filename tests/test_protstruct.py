@@ -6,16 +6,20 @@ import json
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 from protstruct.analysis import AnalysisConfig, AnalysisResult, SequenceAnalysis, analyze_fasta, analyze_records
-from protstruct.alignment import align_secondary_structure, build_alignment
+from protstruct import __version__
+from protstruct.alignment import _align_pair_python, align_pair, align_secondary_structure, build_alignment
 from protstruct.consistency import compute_consistency, render_consistency_csv, write_consistency_csv
-from protstruct.disulfide import DisulfideBond, DisulfideResult, predict_disulfides
+from protstruct.disulfide import DisulfideBond, DisulfideResult, _predict_disulfides_python, predict_disulfides, predict_disulfides_batch
 from protstruct.fasta import FastaError, SequenceRecord, is_supported_fasta, parse_fasta_text, read_fasta
 from protstruct.report import render
 from protstruct.saltbridge import SaltBridgeCandidate
-from protstruct.search import SearchConfig, search_database
-from protstruct.secondary_structure import SS_ORDER, SecondaryStructure, predict_secondary_structure
+from protstruct.psipred_engine import predict_psipred, predict_psipred_batch
+from protstruct.rust_core import MAX_THREADS, _core_binary, align_pairs_rust, effective_threads
+from protstruct.search import SearchConfig, _full_rust_search, _rust_binary as _search_binary, search_database
+from protstruct.secondary_structure import SS_ORDER, SecondaryStructure, predict_secondary_structure, predict_secondary_structure_batch
 from protstruct.structure_io import read_structure_contacts
 
 DEMO = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "examples", "demo.fasta")
@@ -44,14 +48,12 @@ class FastaTests(unittest.TestCase):
         with self.assertRaises(FastaError):
             parse_fasta_text(">bad\nACDE1F\n")
 
-    def test_sequence_limit(self):
+    def test_unlimited_sequences_by_default(self):
         text = "".join(">s%d\nACDEFGHIK\n" % index for index in range(21))
+        records = parse_fasta_text(text)
+        self.assertEqual(len(records), 21)
         with self.assertRaises(FastaError):
-            parse_fasta_text(text)
-        records = parse_fasta_text(text, max_sequences=25)
-        self.assertEqual(len(records), 21)
-        records = parse_fasta_text(text, max_sequences=None)
-        self.assertEqual(len(records), 21)
+            parse_fasta_text(text, max_sequences=20)
 
     def test_missing_header(self):
         with self.assertRaises(FastaError):
@@ -330,6 +332,7 @@ class AnalysisAndReportTests(unittest.TestCase):
         payload = json.loads(render(self.result, "json"))
         self.assertEqual(len(payload["sequences"]), 5)
         self.assertIsNotNone(payload["alignment"])
+        self.assertEqual(payload["config"]["threads"], 0)
         reader = list(csv.DictReader(io.StringIO(render(self.result, "csv"))))
         self.assertEqual(len(reader), 5)
         self.assertEqual(reader[0]["identifier"], "lysozyme")
@@ -338,10 +341,15 @@ class AnalysisAndReportTests(unittest.TestCase):
         result = analyze_fasta(DEMO, AnalysisConfig(alignment=False))
         self.assertIsNone(result.alignment)
 
-    def test_sequence_limit_config(self):
-        records = parse_fasta_text("".join(">s%d\nACDEFG\n" % index for index in range(5)))
+    def test_analysis_without_sequence_limit(self):
+        records = parse_fasta_text("".join(">s%d\nACDEFG\n" % index for index in range(21)))
+        result = analyze_records(records, AnalysisConfig(alignment=False))
+        self.assertEqual(result.count, 21)
+
+    def test_invalid_thread_count(self):
+        records = parse_fasta_text(">s\nACDEFG\n")
         with self.assertRaises(ValueError):
-            analyze_records(records, AnalysisConfig(max_sequences=4))
+            analyze_records(records, AnalysisConfig(threads=65, alignment=False))
 
 
 class StructureFileTests(unittest.TestCase):
@@ -391,7 +399,7 @@ class CliTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             output = os.path.join(directory, "report.json")
-            code = main([DEMO, "-f", "json", "-o", output])
+            code = main([DEMO, "-f", "json", "-o", output, "--threads", "2"])
             self.assertEqual(code, 0)
             with open(output, "r", encoding="utf-8") as handle:
                 payload = json.load(handle)
@@ -435,6 +443,107 @@ class CliTests(unittest.TestCase):
             self.assertEqual(main([DEMO, "--figure", figure]), 0)
             self.assertTrue(os.path.exists(figure))
             self.assertTrue(os.path.exists(os.path.join(directory, "only_figure_scores.csv")))
+
+
+class RustCoreTests(unittest.TestCase):
+    def setUp(self):
+        try:
+            _core_binary()
+        except RuntimeError as exc:  # pragma: no cover - 取决于本地构建
+            self.skipTest(str(exc))
+        if _core_binary() is None:
+            self.skipTest("Rust protstruct-core binary is unavailable")
+
+    def test_batch_alignment_matches_python(self):
+        pairs = [
+            ("a", "ACDEFGHIKL", "ACDKYGHIKL"),
+            ("b", "ACDEFGHIKLMNP", "ACDEFGHIKL"),
+            ("c", "AAAA", "AA"),
+            ("d", "ACDEXGHIKL", "ACDEYGHIKL"),
+        ]
+        results = align_pairs_rust(pairs)
+        self.assertIsNotNone(results)
+        for (_, first, second), result in zip(pairs, results):
+            expected = _align_pair_python(first, second)
+            self.assertEqual(result[:2], expected[:2])
+            self.assertAlmostEqual(result[2], expected[2], places=9)
+
+    def test_batch_disulfide_matches_python(self):
+        records = [
+            (LYSOZYME, "H" * len(LYSOZYME), 4, 120),
+            ("GIVEQCCTSICSLYQLENYCN", None, 4, 120),
+            ("ACDEFGHIKLMNPQRSTVWYCAC", None, 4, 120),
+            ("giveqcctsicslyqlenycn", None, 4, 120),
+            ("".join("C" + "AAAAA" for _ in range(18)), None, 4, 120),
+        ]
+        results = predict_disulfides_batch(records)
+        for record, result in zip(records, results):
+            expected = _predict_disulfides_python(*record)
+            self.assertEqual(result.bonds, expected.bonds)
+            self.assertEqual(result.free_cysteines, expected.free_cysteines)
+
+    def test_thread_limit_and_parallel_alignment(self):
+        self.assertEqual(effective_threads(0), min(os.cpu_count() or 1, MAX_THREADS))
+        self.assertEqual(effective_threads(64), min(os.cpu_count() or 1, MAX_THREADS))
+        self.assertEqual(effective_threads(999), min(os.cpu_count() or 1, MAX_THREADS))
+        sequences = ["ACDEFGHIKLMNPQRSTVWY" * (index % 3 + 1) for index in range(12)]
+        serial = build_alignment(["s%d" % index for index in range(12)], sequences, threads=1)
+        parallel = build_alignment(["s%d" % index for index in range(12)], sequences, threads=4)
+        self.assertEqual(parallel.aligned, serial.aligned)
+        self.assertEqual(parallel.consensus, serial.consensus)
+        self.assertEqual(parallel.identity, serial.identity)
+
+    def test_python_fallback_remains_available(self):
+        with mock.patch("protstruct.alignment.align_pairs_rust", return_value=None):
+            self.assertEqual(align_pair("ACDEFG", "ACDYFG"), _align_pair_python("ACDEFG", "ACDYFG"))
+        with mock.patch("protstruct.disulfide.disulfide_pairs_rust", return_value=None):
+            self.assertEqual(
+                predict_disulfides("GIVEQCCTSICSLYQLENYCN").bonds,
+                _predict_disulfides_python("GIVEQCCTSICSLYQLENYCN").bonds,
+            )
+
+
+class BatchRustTests(unittest.TestCase):
+    def test_batch_psipred_matches_single(self):
+        records = read_fasta(DEMO)[:2]
+        batch = predict_psipred_batch([record.sequence for record in records])
+        single = [predict_psipred(record.sequence) for record in records]
+        self.assertEqual(batch, single)
+        secondary = predict_secondary_structure_batch([record.sequence for record in records])
+        self.assertEqual(
+            [item.ss for item in secondary],
+            [predict_secondary_structure(record.sequence).ss for record in records],
+        )
+
+    def test_full_rust_search_matches_python(self):
+        if _search_binary() is None:
+            self.skipTest("Rust protstruct-search binary is unavailable")
+        database = read_fasta(DEMO, max_sequences=None)
+        query = database[0]
+        config = SearchConfig(top_n=5, prefilter=10, use_rust=True)
+        rust_hits = _full_rust_search(query, database, config)
+        self.assertIsNotNone(rust_hits)
+        python_hits = search_database(query, database, SearchConfig(top_n=5, prefilter=10, use_rust=False))
+        self.assertEqual([hit.identifier for hit in rust_hits], [hit.identifier for hit in python_hits])
+        for rust_hit, python_hit in zip(rust_hits, python_hits):
+            self.assertEqual(rust_hit.ss_score, python_hit.ss_score)
+            self.assertEqual(rust_hit.matches, python_hit.matches)
+            self.assertEqual(rust_hit.aligned_length, python_hit.aligned_length)
+            self.assertAlmostEqual(rust_hit.ss_identity, python_hit.ss_identity, places=9)
+            self.assertAlmostEqual(rust_hit.coverage, python_hit.coverage, places=9)
+            self.assertAlmostEqual(rust_hit.sequence_similarity, python_hit.sequence_similarity, places=9)
+            self.assertAlmostEqual(rust_hit.total_score, python_hit.total_score, places=9)
+
+        quoted = parse_fasta_text(
+            ">s0 \"quoted description\nACDEFGHIKLMNPQRSTVWY\n"
+            ">s1 plain\nACDEFGHIKLMNPQRSTVWY\n"
+        )
+        quoted_hits = _full_rust_search(quoted[0], quoted, SearchConfig(top_n=2, prefilter=10))
+        self.assertIsNotNone(quoted_hits)
+        self.assertEqual([hit.description for hit in quoted_hits], ['"quoted description', "plain"])
+
+    def test_version_is_040(self):
+        self.assertEqual(__version__, "0.4.0")
 
 
 if __name__ == "__main__":

@@ -9,7 +9,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Sequence, Set, Tuple
+
+from .rust_core import disulfide_pairs_rust
 
 
 @dataclass
@@ -124,7 +126,7 @@ def _optimal_pairs(
     return pairs
 
 
-def predict_disulfides(
+def _predict_disulfides_python(
     sequence: str,
     ss: Optional[str] = None,
     min_separation: int = 4,
@@ -178,3 +180,60 @@ def predict_disulfides(
     result.bonds.sort(key=lambda bond: bond.cys_a)
     result.free_cysteines = [position for position in positions if position not in used]
     return result
+
+
+def _disulfide_result_from_pairs(
+    sequence: str,
+    ss: Optional[str],
+    min_separation: int,
+    max_loop: int,
+    pairs: Sequence[Tuple[int, int]],
+) -> DisulfideResult:
+    """根据 Rust 返回的配对位置构建与 Python 版一致的结果。"""
+    sequence = sequence.upper()
+    positions = [index + 1 for index, residue in enumerate(sequence) if residue == "C"]
+    result = DisulfideResult(cysteines=positions)
+    used: Set[int] = set()
+    for first, second in pairs:
+        separation = second - first
+        in_helix = bool(
+            ss and len(ss) == len(sequence)
+            and ss[first - 1] == "H" and ss[second - 1] == "H"
+        )
+        cost = _pair_cost(separation, in_helix, max_loop)
+        score = max(0.05, min(1.0, 1.0 - cost / 3.0))
+        result.bonds.append(DisulfideBond(first, second, separation, round(score, 2)))
+        used.update((first, second))
+    result.bonds.sort(key=lambda bond: bond.cys_a)
+    result.free_cysteines = [position for position in positions if position not in used]
+    return result
+
+
+def predict_disulfides_batch(
+    records: Sequence[Tuple[str, Optional[str], int, int]],
+    threads: int = 0,
+) -> List[DisulfideResult]:
+    """一次启动 Rust 批量配对；核心不可用时逐条回退 Python。"""
+    if not records:
+        return []
+    rust_pairs = disulfide_pairs_rust(records, threads=threads)
+    if rust_pairs is not None:
+        return [
+            _disulfide_result_from_pairs(sequence, ss, min_separation, max_loop, pairs)
+            for (sequence, ss, min_separation, max_loop), pairs in zip(records, rust_pairs)
+        ]
+    return [
+        _predict_disulfides_python(sequence, ss, min_separation, max_loop)
+        for sequence, ss, min_separation, max_loop in records
+    ]
+
+
+def predict_disulfides(
+    sequence: str,
+    ss: Optional[str] = None,
+    min_separation: int = 4,
+    max_loop: int = 120,
+    threads: int = 0,
+) -> DisulfideResult:
+    """预测半胱氨酸配对，优先使用 Rust 批量核心。"""
+    return predict_disulfides_batch([(sequence, ss, min_separation, max_loop)], threads=threads)[0]

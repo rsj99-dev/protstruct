@@ -1,0 +1,1 @@
+D:\2级结构比对软件\psipred_version\software\rust\protstruct_psipred\target\release\libprotstruct_psipred.rlib: D:\2级结构比对软件\psipred_version\software\rust\protstruct_psipred\src\blosum.rs D:\2级结构比对软件\psipred_version\software\rust\protstruct_psipred\src\lib.rs

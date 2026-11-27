@@ -6,10 +6,11 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Sequence
 
 from .alignment import AlignmentResult, build_alignment
-from .disulfide import DisulfideResult, predict_disulfides
+from .disulfide import DisulfideResult, predict_disulfides_batch
 from .fasta import SequenceRecord, read_fasta
 from .saltbridge import SaltBridgeCandidate, predict_salt_bridges
-from .secondary_structure import SecondaryStructure, predict_secondary_structure
+from .secondary_structure import SecondaryStructure, predict_secondary_structure_batch
+from .rust_core import MAX_THREADS, effective_threads
 from .structure_io import StructureContacts, read_structure_contacts
 
 
@@ -17,7 +18,6 @@ from .structure_io import StructureContacts, read_structure_contacts
 class AnalysisConfig:
     """分析参数。所有距离/窗口均以残基为单位。"""
 
-    max_sequences: int = 20
     min_helix: int = 4
     min_sheet: int = 3
     min_turn: int = 3
@@ -27,6 +27,7 @@ class AnalysisConfig:
     max_salt_bridges: int = 8
     alignment: bool = True
     pdb_path: Optional[str] = None
+    threads: int = 0
 
 
 @dataclass
@@ -85,24 +86,21 @@ def analyze_records(
     config = config or AnalysisConfig()
     if not records:
         raise ValueError("At least one sequence is required.")
-    if len(records) > config.max_sequences:
-        raise ValueError(
-            "Sequence count %d exceeds the limit of %d." % (len(records), config.max_sequences)
-        )
+    if config.threads < 0 or config.threads > MAX_THREADS:
+        raise ValueError("Thread count must be between 0 and %d." % MAX_THREADS)
+    thread_count = effective_threads(config.threads)
 
+    secondary_results = predict_secondary_structure_batch(
+        [record.sequence for record in records],
+        min_helix=config.min_helix,
+        min_sheet=config.min_sheet,
+    )
+    disulfide_results = predict_disulfides_batch([
+        (record.sequence, secondary.ss, config.min_disulfide_separation, 120)
+        for record, secondary in zip(records, secondary_results)
+    ], threads=thread_count)
     items: List[SequenceAnalysis] = []
-    for record in records:
-        secondary = predict_secondary_structure(
-            record.sequence,
-            min_helix=config.min_helix,
-            min_sheet=config.min_sheet,
-            min_turn=config.min_turn,
-        )
-        disulfides = predict_disulfides(
-            record.sequence,
-            ss=secondary.ss,
-            min_separation=config.min_disulfide_separation,
-        )
+    for record, secondary, disulfides in zip(records, secondary_results, disulfide_results):
         salt_bridges = predict_salt_bridges(
             record.sequence,
             ss=secondary.ss,
@@ -121,7 +119,11 @@ def analyze_records(
 
     alignment = None
     if config.alignment and len(items) > 1:
-        alignment = build_alignment([item.identifier for item in items], [item.record.sequence for item in items])
+        alignment = build_alignment(
+            [item.identifier for item in items],
+            [item.record.sequence for item in items],
+            threads=thread_count,
+        )
 
     structure = read_structure_contacts(config.pdb_path) if config.pdb_path else None
     return AnalysisResult(
@@ -136,7 +138,7 @@ def analyze_records(
 def analyze_fasta(path: str, config: Optional[AnalysisConfig] = None) -> AnalysisResult:
     """读取 FASTA 文件并完成全部分析。"""
     config = config or AnalysisConfig()
-    records = read_fasta(path, max_sequences=config.max_sequences)
+    records = read_fasta(path)
     return analyze_records(records, config=config, source=path)
 
 

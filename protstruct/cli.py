@@ -21,7 +21,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="PSIPRED V4.1 protein secondary-structure and multi-sequence alignment tool: H/α-helix, E/β-sheet, C/coil (including β-turn), disulfides and salt bridges.",
         formatter_class=argparse.RawTextHelpFormatter,
     )
-    parser.add_argument("fasta", nargs="?", help="Input FASTA file (.fa/.faa/.fasta; 1-20 sequences)")
+    parser.add_argument("fasta", nargs="?", help="Input FASTA file (.fa/.faa/.fasta; sequence count unlimited)")
     parser.add_argument(
         "-f", "--format", default="text", choices=["text", "markdown", "json", "csv"],
         help="Output format (default: text)",
@@ -41,6 +41,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum salt-bridge candidates per sequence (default: 8)",
     )
     parser.add_argument("--no-alignment", action="store_true", help="Skip multiple-sequence alignment")
+    parser.add_argument(
+        "--threads", type=int, default=0, metavar="N",
+        help="Worker threads for Rust alignment/disulfide analysis (0 = auto, max 64)",
+    )
     parser.add_argument(
         "--figure", metavar="PATH",
         help="Write the secondary-structure consistency SVG; auto-create _scores.csv when --scores is omitted",
@@ -69,6 +73,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     if not args.fasta:
         parser.print_help()
         return 1
+    if args.threads < 0 or args.threads > 64:
+        print("Error: --threads must be between 0 and 64.", file=sys.stderr)
+        return 2
     if not is_supported_fasta(args.fasta):
         print(
             "Note: %s does not have a .fa/.faa/.fasta extension; attempting FASTA parsing." % args.fasta,
@@ -80,6 +87,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         min_disulfide_separation=args.min_disulfide_separation,
         max_salt_bridges=args.max_salt_bridges,
         alignment=not args.no_alignment,
+        threads=args.threads,
         pdb_path=args.pdb_path,
     )
     try:
